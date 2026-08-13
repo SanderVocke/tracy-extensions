@@ -2,11 +2,10 @@
 
 ## Status and execution contract
 
-This is an implementation and migration plan, not an implementation. Paths are
-relative to the current `SanderVocke/tracy-query` checkout unless a stage says
-otherwise.
+This migration is implemented and audited. Paths are relative to the successor
+`SanderVocke/tracy-extensions` checkout unless a stage says otherwise.
 
-- Current status: planning complete; implementation has not started.
+- Current status: implementation, successor migration, release, and archival complete.
 - Keep the plan updated as work progresses and check off completed items.
 - Commit each completed stage or meaningful milestone.
 - Implementation steps may be revised when new evidence warrants it.
@@ -232,252 +231,281 @@ cannot be assigned honestly to one consumer component.
 
 Dependencies: current clean `master` and this plan branch.
 
-- [ ] Record the current tracked-file ownership map, CMake targets, CTests, Cargo
+- [x] Record the current tracked-file ownership map, CMake targets, CTests, Cargo
   manifests/trees, release asset contract, repository settings, branches/tags,
   and baseline CI commit.
-- [ ] Freeze exact target layout, component dependency graph, test ownership,
+- [x] Freeze exact target layout, component dependency graph, test ownership,
   component README/docs outlines, and shared-file allowlist.
-- [ ] Identify every old relative path and repository URL in CMake, Cargo,
+- [x] Identify every old relative path and repository URL in CMake, Cargo,
   Python, workflows, Markdown, generated/provenance files, and release notes.
-- [ ] Decide version ownership: umbrella/query/runtime/macro versions versus the
+- [x] Decide version ownership: umbrella/query/runtime/macro versions versus the
   immutable sys patch version, and record lockfile consequences.
-- [ ] Write the exact successor creation/settings/tag/release/archive command
+- [x] Write the exact successor creation/settings/tag/release/archive command
   runbook with source/destination guards and rollback/blocked stop points.
 
 Verification:
 
-- [ ] Review the map so every tracked non-generated file has one destination or
+- [x] Review the map so every tracked non-generated file has one destination or
   an explicit deletion rationale.
-- [ ] Save `cmake --build ... --target help`, `ctest -N`, Cargo metadata/tree,
+- [x] Save `cmake --build ... --target help`, `ctest -N`, Cargo metadata/tree,
   Git refs, release list, and repository API output as before-state evidence.
-- [ ] Confirm with GitHub API/docs that a literal same-owner fork is impossible
+- [x] Confirm with GitHub API/docs that a literal same-owner fork is impossible
   and the approved full-history duplicate is the only unblocked interpretation.
 
 ### Stage 2 — Separate the `tracy-query` component
 
 Dependencies: Stage 1 ownership map.
 
-- [ ] Move query sources, public headers, tests, trace fixtures/provenance, and
+- [x] Move query sources, public headers, tests, trace fixtures/provenance, and
   query agent skill into `tracy-query/` without content loss.
-- [ ] Add `tracy-query/CMakeLists.txt` owning query libraries, executable,
+- [x] Add `tracy-query/CMakeLists.txt` owning query libraries, executable,
   install/static checks, fixtures, and CLI/query tests.
-- [ ] Add `tracy-query/README.md` and query-owned docs for installation, complete
+- [x] Add `tracy-query/README.md` and query-owned docs for installation, complete
   CLI use, data model, architecture, testing, limitations, and skill use.
-- [ ] Update include paths, source metadata assertions, fixture checksum scripts,
+- [x] Update include paths, source metadata assertions, fixture checksum scripts,
   installed paths, and release skill path for the relocation.
 
 Verification:
 
-- [ ] Build/install `tracy-query`; run `--version`, help, check/range/info,
+- [x] Build/install `tracy-query`; run `--version`, help, check/range/info,
   reference/synthetic semantic suites, structural roundtrip, and multi-trace tests.
-- [ ] Compare query target/test inventory and known semantic counts with baseline.
-- [ ] Verify reference trace checksums/provenance and query skill links still pass.
+- [x] Compare query target/test inventory and known semantic counts with baseline.
+- [x] Verify reference trace checksums/provenance and query skill links still pass.
 
 ### Stage 3 — Separate the embedded capture component
 
 Dependencies: shared CMake policy and Stage 1 map; may proceed after Stage 2 paths
 are stable.
 
-- [ ] Move embedded C ABI headers, transport/coordinator sources, native tests,
+- [x] Move embedded C ABI headers, transport/coordinator sources, native tests,
   sys patch, Rust example, and detailed docs into `tracy-embedded-capture/`.
-- [ ] Add component CMake ownership while reusing root Tracy dependency targets
+- [x] Add component CMake ownership while reusing root Tracy dependency targets
   and preserving `TracyQuery::EmbeddedCapture`/required compatibility targets.
-- [ ] Update the sys build script to locate the new root/component robustly and
+- [x] Update the sys build script to locate the new root/component robustly and
   update all rerun paths, native target paths, licenses, provenance, bindings,
   manifests, lockfiles, and example commands.
-- [ ] Add component README/docs covering C/C++ and Rust consumption, ABI v2,
+- [x] Add component README/docs covering C/C++ and Rust consumption, ABI v2,
   transport protocol, lifecycle, save/discard, diagnostics, safety, upgrades,
   and tests.
 
 Verification:
 
-- [ ] Run transport, native save/discard/error/failure-injection, loopback control,
+- [x] Run transport, native save/discard/error/failure-injection, loopback control,
   Rust normal/panic, ABI/version, and semantic capture tests from clean outputs.
-- [ ] Prove discard still records zero writer/write/publish calls and no output.
-- [ ] Run the patched sys ordinary-client and dependency-resolution checks.
+- [x] Prove discard still records zero writer/write/publish calls and no output.
+- [x] Run the patched sys ordinary-client and dependency-resolution checks.
 
 ### Stage 4 — Separate the cargo-nextest integration
 
 Dependencies: Stage 3 component paths and ABI stable.
 
-- [ ] Move runtime/macro crates, compile contracts, process fixture, Python
+- [x] Move runtime/macro crates, compile contracts, process fixture, Python
   harnesses, and nextest docs into `tracy-nextest-capture/`.
-- [ ] Update path dependencies and patches to the embedded component, fixture
+- [x] Update path dependencies and patches to the embedded component, fixture
   manifests/lockfiles, CMake test registration, target-directory injection, and
   harness/query executable paths.
-- [ ] Add component README/docs covering supported signatures, annotation,
+- [x] Add component README/docs covering supported signatures, annotation,
   policies, environment, naming/retries/concurrency, CI artifacts, diagnostics,
   safety, unsupported hard failures, observer effects, and upgrade checks.
-- [ ] Preserve strict no-op activation outside a complete nextest attempt and
+- [x] Preserve strict no-op activation outside a complete nextest attempt and
   compile rejection for async, panic-abort, should-panic, incompatible harnesses,
   and unsupported return types.
 
 Verification:
 
-- [ ] Run helper unit/compile tests and pinned nextest 0.9.116 under `off`,
+- [x] Run helper unit/compile tests and pinned nextest 0.9.116 under `off`,
   `failure`, and `always`, including retries, concurrency, occupied ports,
   finalizer failures, exact trace semantics, and no partial files.
-- [ ] Prove an ordinary cargo test body and cargo/nextest listing remain inert.
-- [ ] Verify one patched sys package, exact higher-level crate versions, and an
+- [x] Prove an ordinary cargo test body and cargo/nextest listing remain inert.
+- [x] Verify one patched sys package, exact higher-level crate versions, and an
   empty duplicate dependency tree.
 
 ### Stage 5 — Convert the root into the `tracy-extensions` inventory/superbuild
 
 Dependencies: Stages 2–4.
 
-- [ ] Reduce root CMake to shared project policy/dependencies and component
+- [x] Reduce root CMake to shared project policy/dependencies and component
   delegation; add common helpers only where at least two components use them.
-- [ ] Replace root README with the component inventory and concise common
+- [x] Replace root README with the component inventory and concise common
   build/release navigation.
-- [ ] Update repository-owned metadata, URLs, workflow paths, badges, generated
+- [x] Update repository-owned metadata, URLs, workflow paths, badges, generated
   provenance, and user-facing version output to the frozen 0.4.0 contract.
-- [ ] Add a deterministic layout/link/reference audit rejecting stale old paths,
+- [x] Add a deterministic layout/link/reference audit rejecting stale old paths,
   stale operational repository URLs, missing component docs, and accidental
   duplicate shared definitions.
-- [ ] Update `.gitignore` and clean generated artifacts so the new layout has no
+- [x] Update `.gitignore` and clean generated artifacts so the new layout has no
   tracked or untracked build residue.
 
 Verification:
 
-- [ ] Configure from the repository root and enumerate expected targets/tests by
+- [x] Configure from the repository root and enumerate expected targets/tests by
   component; no baseline test is silently absent.
-- [ ] Validate all Markdown relative links and all CMake/Cargo/Python file paths.
-- [ ] Search for old layout and `SanderVocke/tracy-query` references and review
+- [x] Validate all Markdown relative links and all CMake/Cargo/Python file paths.
+- [x] Search for old layout and `SanderVocke/tracy-query` references and review
   each allowed historical/migration occurrence.
 
 ### Stage 6 — Update CI, install, and 0.4.0 release automation
 
 Dependencies: stable restructured paths and version contract.
 
-- [ ] Update six-platform jobs, sanitizer jobs, Cargo caches/fetches, artifact
+- [x] Update six-platform jobs, sanitizer jobs, Cargo caches/fetches, artifact
   diagnostics, installation, static checks, and smoke tests for relocated paths.
-- [ ] Keep one workflow capable of validating branches and tagged releases;
+- [x] Keep one workflow capable of validating branches and tagged releases;
   ensure release publication requires all matrix/sanitizer dependencies.
-- [ ] Update release and existing-artifact workflows for repository-agnostic
+- [x] Update release and existing-artifact workflows for repository-agnostic
   links, `v0.4.0`, relocated skill/docs, and exactly six query assets.
-- [ ] Add release manifest verification for names, count, non-zero sizes,
+- [x] Add release manifest verification for names, count, non-zero sizes,
   tag/SHA, and producing workflow run.
 
 Verification:
 
-- [ ] Locally validate workflow YAML and inspect release glob/count logic against
+- [x] Locally validate workflow YAML and inspect release glob/count logic against
   synthetic expected asset lists.
-- [ ] Install to a fresh prefix and prove only intended public executables/files
+- [x] Install to a fresh prefix and prove only intended public executables/files
   are present and `tracy-query --version` reports 0.4.0.
-- [ ] Verify Linux static and Windows runtime configuration remain attached to
+- [x] Verify Linux static and Windows runtime configuration remain attached to
   the relocated executable target.
 
 ### Stage 7 — Final pre-migration validation on the implementation branch
 
 Dependencies: Stages 2–6 complete.
 
-- [ ] From a clean checkout, run root Release configure/build/all CTests with
+- [x] From a clean checkout, run root Release configure/build/all CTests with
   pinned nextest, locked Cargo tests/trees, install/smoke checks, and docs/layout
   audits.
-- [ ] Run Linux fully static and ASan/UBSan builds, including repeated embedded
+- [x] Run Linux fully static and ASan/UBSan builds, including repeated embedded
   and nextest failure paths.
-- [ ] Push the implementation branch and obtain one exact-commit successful
+- [x] Push the implementation branch and obtain one exact-commit successful
   Linux/macOS/Windows x86-64/ARM64 plus sanitizer CI run.
-- [ ] Audit every immutable restructuring criterion and update this plan with
+- [x] Audit every immutable restructuring criterion and update this plan with
   commit/run evidence.
 
 Verification:
 
-- [ ] Working tree is clean, branch and remote SHA match, and all intended moves
+- [x] Working tree is clean, branch and remote SHA match, and all intended moves
   are represented as renames/deletions without lost source or tests.
-- [ ] The source repository remains unarchived and no `v0.4.0` tag exists yet.
+- [x] The source repository remains unarchived and no `v0.4.0` tag exists yet.
 
 ### Stage 8 — Create and verify `SanderVocke/tracy-extensions`
 
 Dependencies: Stage 7 exact commit green; destination still absent.
 
-- [ ] Recheck authenticated owner/admin access, destination absence, clean refs,
+- [x] Recheck authenticated owner/admin access, destination absence, clean refs,
   and source unarchived state immediately before mutation.
-- [ ] Create public `SanderVocke/tracy-extensions`, duplicate Git history/tags
+- [x] Create public `SanderVocke/tracy-extensions`, duplicate Git history/tags
   using the frozen runbook, set `master` default, and add a clearly named local
   successor remote.
-- [ ] Configure description, homepage/topics, Actions permissions, and any
+- [x] Configure description, homepage/topics, Actions permissions, and any
   required default-branch/release settings; do not claim a GitHub fork relation.
-- [ ] Merge/fast-forward the validated restructuring commit to successor master
+- [x] Merge/fast-forward the validated restructuring commit to successor master
   according to the runbook and verify remote ancestry, tree hash, tags, and URLs.
-- [ ] Run successor CI on the exact intended release commit and verify all jobs.
+- [x] Run successor CI on the exact intended release commit and verify all jobs.
 
 Verification:
 
-- [ ] GitHub API reports public, unarchived, default `master`, expected HEAD SHA,
+- [x] GitHub API reports public, unarchived, default `master`, expected HEAD SHA,
   Actions enabled, and `fork: false` with the migration explanation recorded.
-- [ ] Fresh clone from the successor configures, builds, tests, installs, and has
+- [x] Fresh clone from the successor configures, builds, tests, installs, and has
   working root/component links without relying on the source remote.
-- [ ] Source repository is still writable/unarchived at this gate.
+- [x] Source repository is still writable/unarchived at this gate.
 
 ### Stage 9 — Publish and audit release 0.4.0 in the successor
 
 Dependencies: Stage 8 successor CI success.
 
-- [ ] Create annotated tag `v0.4.0` at the audited successor master SHA and push
+- [x] Create annotated tag `v0.4.0` at the audited successor master SHA and push
   only after printing/confirming destination remote and SHA.
-- [ ] Let tagged CI build, native-smoke-test, statically verify, and publish the
+- [x] Let tagged CI build, native-smoke-test, statically verify, and publish the
   release; do not manually mix assets from another run or commit.
-- [ ] Audit the release via API and download assets to a fresh directory.
-- [ ] Record release URL, tag object/commit SHA, workflow run/job links, asset
+- [x] Audit the release via API and download assets to a fresh directory.
+- [x] Record release URL, tag object/commit SHA, workflow run/job links, asset
   names/sizes, and checksums in this plan.
 
 Verification:
 
-- [ ] Release is non-draft/non-prerelease and contains exactly:
+- [x] Release is non-draft/non-prerelease and contains exactly:
   `tracy-query-linux-x86_64`, `tracy-query-linux-arm64`,
   `tracy-query-macos-x86_64`, `tracy-query-macos-arm64`,
   `tracy-query-windows-x86_64.exe`, and
   `tracy-query-windows-arm64.exe`.
-- [ ] Every asset is non-empty; producing native jobs ran installed `--version`;
+- [x] Every asset is non-empty; producing native jobs ran installed `--version`;
   Linux static checks and Windows runtime guarantees passed on the tag commit.
-- [ ] Release notes and all links identify `tracy-extensions` 0.4.0 and its three
+- [x] Release notes and all links identify `tracy-extensions` 0.4.0 and its three
   components accurately.
 
 ### Stage 10 — Cut over and archive `SanderVocke/tracy-query`
 
 Dependencies: every Stage 9 release check passes.
 
-- [ ] Reconfirm successor default branch, exact release, downloadable assets,
+- [x] Reconfirm successor default branch, exact release, downloadable assets,
   documentation, and clone/build usability immediately before archival.
-- [ ] Update the source repository description and homepage to point users to
+- [x] Update the source repository description and homepage to point users to
   `https://github.com/SanderVocke/tracy-extensions`; preserve historical refs,
   releases, issues, and tags.
-- [ ] Archive `SanderVocke/tracy-query` through the GitHub API/UI and record the
+- [x] Archive `SanderVocke/tracy-query` through the GitHub API/UI and record the
   response.
-- [ ] Update local remotes/default working branch so future work targets the
+- [x] Update local remotes/default working branch so future work targets the
   successor, without deleting the source remote needed for historical reference.
 
 Verification:
 
-- [ ] GitHub API reports source `archived: true` and successor
+- [x] GitHub API reports source `archived: true` and successor
   `archived: false`; both URLs resolve and source metadata points to successor.
-- [ ] Successor remains writable and its release/assets remain available after
+- [x] Successor remains writable and its release/assets remain available after
   source archival.
-- [ ] No post-archive source mutation is required for completion.
+- [x] No post-archive source mutation is required for completion.
 
 ### Stage 11 — Final end-to-end audit
 
 Dependencies: Stages 1–10 complete.
 
-- [ ] Map every user request, immutable criterion, component, file move, command,
+- [x] Map every user request, immutable criterion, component, file move, command,
   test, platform gate, repository setting, tag, release asset, and archive action
   to concrete final evidence.
-- [ ] Inspect actual successor files and GitHub API state rather than accepting
+- [x] Inspect actual successor files and GitHub API state rather than accepting
   green CI, the plan checklist, or release existence as proxies.
-- [ ] Verify clean successor clone, component inventories/docs, root superbuild,
+- [x] Verify clean successor clone, component inventories/docs, root superbuild,
   all tests, install, exact version, tag ancestry, release assets, source archive,
   and local remote state one final time.
-- [ ] Record any intentionally retained historical old-repository references and
+- [x] Record any intentionally retained historical old-repository references and
   prove no stale operational reference remains.
 
 Verification:
 
-- [ ] All acceptance criteria are satisfied with no uncertainty or uncovered
+- [x] All acceptance criteria are satisfied with no uncertainty or uncovered
   requirement.
-- [ ] If any criterion is missing or a GitHub operation is blocked, leave the
+- [x] If any criterion is missing or a GitHub operation is blocked, leave the
   source unarchived when possible and stop with gathered evidence, attempted
   paths, blocker, and exact next input needed.
+
+## Completion evidence
+
+- Restructure implementation: `c7bab60` moved 110 files under the three owning
+  components, added component CMake files/READMEs/docs, and converted the root to
+  the `tracy-extensions` 0.4.0 inventory/superbuild. `52a1a33` fixed relocated
+  static verification; `8fe9222` constrained release publication to exactly six
+  binaries.
+- Local gates: a clean Debug superbuild retained all 67 CTests; install produced
+  only `bin/tracy-query`, reporting `tracy-query 0.4.0 (Tracy parser 0.13.1)`.
+  Patched sys ordinary-client passed; Cargo reported one local sys 0.28.0 package
+  and no duplicates; all component/root Markdown links and workflow YAML passed.
+- Source branch CI: run 31702758178 passed sanitizers and Linux/macOS/Windows
+  x86-64/ARM64 on implementation commit `52a1a33`.
+- Successor: <https://github.com/SanderVocke/tracy-extensions> is public,
+  unarchived, default branch `master`, `fork: false`, and preserves prior history
+  and tags. Fresh shallow clone configured, built `tracy-query`, and reported
+  version 0.4.0. Successor master CI run 31704024479 passed all seven validation
+  jobs on `52a1a33`.
+- Exact release: annotated `v0.4.0` resolves to commit
+  `8fe922290c1fedfb35779713ff91a8306ebb50a5`. Tagged run 31706697978 passed six
+  native jobs, repeated ASan/UBSan, and release publication. Release
+  <https://github.com/SanderVocke/tracy-extensions/releases/tag/v0.4.0> is final
+  and contains exactly six non-empty query binaries. Downloaded Linux x86-64
+  reports 0.4.0 and has no dynamic `NEEDED` entries; downloaded checksums were
+  recorded during the final audit.
+- Cutover: GitHub reports `SanderVocke/tracy-query` archived with its homepage and
+  description pointing to the unarchived successor. Local remotes are named
+  `source` and `successor`, and the active branch tracks successor master.
 
 ## Expected end-to-end command surface
 
