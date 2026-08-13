@@ -2,23 +2,22 @@
 """Remove absolute COFF archive member names without changing archive offsets."""
 
 from pathlib import Path, PureWindowsPath
+import re
 import sys
 
 
-def normalized_name(name: bytes) -> bytes:
-    # GNU/COFF long-name entries end in b"/\n". Preserve the exact entry size
-    # because other archive headers address this table by byte offset.
-    if not name.endswith(b"/\n"):
-        raise ValueError("malformed archive long-name entry")
-    path = name[:-2].decode("utf-8")
-    if not (len(path) >= 3 and path[1:3] in (":\\", ":/")):
-        return name
+ABSOLUTE_OBJECT = re.compile(rb"[A-Za-z]:[\\/][^\x00\r\n]+?\.obj(?=(?:/\r?\n|\x00))", re.IGNORECASE)
+
+
+def normalized_name(match: re.Match[bytes]) -> bytes:
+    name = match.group(0)
+    path = name.decode("utf-8")
     basename = PureWindowsPath(path).name.encode("utf-8")
-    prefix_length = len(name) - 2 - len(basename)
+    prefix_length = len(name) - len(basename)
     prefix = b"objects/"
     if prefix_length < len(prefix):
         raise ValueError(f"absolute archive member name is unexpectedly short: {path}")
-    replacement = prefix + b"x" * (prefix_length - len(prefix)) + basename + b"/\n"
+    replacement = prefix + b"x" * (prefix_length - len(prefix)) + basename
     if len(replacement) != len(name):
         raise AssertionError("archive member replacement changed size")
     return replacement
@@ -47,11 +46,10 @@ def normalize(path: Path) -> None:
             raise ValueError(f"truncated archive member: {path}")
         if name == b"//":
             payload = bytes(data[payload_start:payload_end])
-            entries = payload.splitlines(keepends=True)
-            replacement = b"".join(normalized_name(entry) for entry in entries)
+            replacement, count = ABSOLUTE_OBJECT.subn(normalized_name, payload)
             if len(replacement) != len(payload):
                 raise AssertionError("archive long-name table changed size")
-            changed += sum(before != after for before, after in zip(entries, replacement.splitlines(keepends=True)))
+            changed += count
             data[payload_start:payload_end] = replacement
         offset = payload_end + (size & 1)
     if offset != len(data):
