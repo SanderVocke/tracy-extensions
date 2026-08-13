@@ -63,6 +63,73 @@ _copy_nonempty("${LICENSE_CAPSTONE_LLVM}" "${_root}/licenses/LICENSE-CAPSTONE-LL
 _copy_nonempty("${LICENSE_ZSTD}" "${_root}/licenses/LICENSE-ZSTD")
 _copy_nonempty("${COPYING_ZSTD}" "${_root}/licenses/COPYING-ZSTD")
 
+# MSVC's librarian preserves the absolute object arguments supplied by CMake as
+# archive member names. Recreate each staged archive from extracted basenames so
+# the public package contains no runner path. /Z7 plus /pathmap handles paths in
+# object debug records; this handles the separate COFF librarian member table.
+if(WIN32)
+    if(NOT DEFINED LIB_TOOL OR NOT EXISTS "${LIB_TOOL}")
+        message(FATAL_ERROR "LIB_TOOL is required to normalize MSVC archives")
+    endif()
+    function(_normalize_msvc_archive archive)
+        get_filename_component(_archive_name "${archive}" NAME)
+        set(_work "${OUTPUT_ROOT}/normalize-${_archive_name}")
+        file(REMOVE_RECURSE "${_work}")
+        file(MAKE_DIRECTORY "${_work}")
+        execute_process(
+            COMMAND "${LIB_TOOL}" /NOLOGO /LIST "${archive}"
+            OUTPUT_VARIABLE _listing
+            RESULT_VARIABLE _list_result
+        )
+        if(NOT _list_result EQUAL 0)
+            message(FATAL_ERROR "Cannot list MSVC archive ${archive}")
+        endif()
+        string(REPLACE "\r\n" ";" _members "${_listing}")
+        string(REPLACE "\n" ";" _members "${_members}")
+        set(_objects)
+        set(_basenames)
+        foreach(_member IN LISTS _members)
+            string(STRIP "${_member}" _member)
+            if(_member STREQUAL "")
+                continue()
+            endif()
+            get_filename_component(_basename "${_member}" NAME)
+            if(_basename IN_LIST _basenames)
+                message(FATAL_ERROR
+                    "Cannot normalize ${archive}: duplicate object basename ${_basename}"
+                )
+            endif()
+            list(APPEND _basenames "${_basename}")
+            execute_process(
+                COMMAND "${LIB_TOOL}" /NOLOGO "/EXTRACT:${_member}" "${archive}"
+                WORKING_DIRECTORY "${_work}"
+                RESULT_VARIABLE _extract_result
+            )
+            if(NOT _extract_result EQUAL 0 OR NOT EXISTS "${_work}/${_basename}")
+                message(FATAL_ERROR "Cannot extract ${_member} from ${archive}")
+            endif()
+            list(APPEND _objects "${_basename}")
+        endforeach()
+        if(NOT _objects)
+            message(FATAL_ERROR "Cannot normalize empty MSVC archive ${archive}")
+        endif()
+        set(_normalized "${_work}/${_archive_name}")
+        execute_process(
+            COMMAND "${LIB_TOOL}" /NOLOGO "/OUT:${_archive_name}" ${_objects}
+            WORKING_DIRECTORY "${_work}"
+            RESULT_VARIABLE _create_result
+        )
+        if(NOT _create_result EQUAL 0 OR NOT EXISTS "${_normalized}")
+            message(FATAL_ERROR "Cannot recreate normalized MSVC archive ${archive}")
+        endif()
+        file(COPY_FILE "${_normalized}" "${archive}")
+        file(REMOVE_RECURSE "${_work}")
+    endfunction()
+    _normalize_msvc_archive("${_root}/lib/${EMBEDDED_NAME}")
+    _normalize_msvc_archive("${_root}/lib/${CAPSTONE_NAME}")
+    _normalize_msvc_archive("${_root}/lib/${ZSTD_NAME}")
+endif()
+
 file(WRITE "${_root}/licenses/PROVENANCE.txt"
 "tracy-extensions_version=${PROJECT_VERSION}\n"
 "source_commit=${SOURCE_COMMIT}\n"

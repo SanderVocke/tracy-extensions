@@ -110,6 +110,7 @@ add_custom_target(
         "-DEMBEDDED_NAME=${_embedded_name}"
         "-DCAPSTONE_NAME=${_capstone_name}"
         "-DZSTD_NAME=${_zstd_name}"
+        "-DLIB_TOOL=${CMAKE_AR}"
         "-DHEADER_SOURCE=${PROJECT_SOURCE_DIR}/tracy-embedded-capture/include/tracy_embedded_capture/embedded_capture.h"
         "-DLICENSE_APACHE=${PROJECT_SOURCE_DIR}/tracy-embedded-capture/rust/tracy-client-sys/LICENSE-APACHE"
         "-DLICENSE_MIT=${PROJECT_SOURCE_DIR}/tracy-embedded-capture/rust/tracy-client-sys/LICENSE-MIT"
