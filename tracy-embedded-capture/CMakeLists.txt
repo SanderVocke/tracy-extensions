@@ -62,6 +62,7 @@ if(TRACY_EMBEDDED_NATIVE_PACKAGE)
         if(MSVC)
             target_compile_options(
                 ${_target} PRIVATE
+                /Z7
                 /experimental:deterministic
                 "/pathmap:${PROJECT_SOURCE_DIR}=."
                 "/pathmap:${PROJECT_BINARY_DIR}=.build"

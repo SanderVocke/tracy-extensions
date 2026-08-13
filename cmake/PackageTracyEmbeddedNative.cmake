@@ -92,7 +92,10 @@ foreach(_payload IN ITEMS
             string(REPLACE "." "\\." _forbidden_regex "${_forbidden_regex}")
             file(STRINGS "${_payload}" _path_leak REGEX "${_forbidden_regex}" LIMIT_COUNT 1)
             if(_path_leak)
-                message(FATAL_ERROR "Package payload leaks absolute build path: ${_payload}")
+                message(FATAL_ERROR
+                    "Package payload leaks absolute build path: ${_payload}\n"
+                    "matched string: ${_path_leak}"
+                )
             endif()
         endforeach()
     endforeach()
