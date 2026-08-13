@@ -182,7 +182,15 @@ jobs:
               ;;
             windows-*)
               machine=$(case "${{ matrix.platform }}" in *x86_64) echo x64 ;; *) echo ARM64 ;; esac)
-              for archive in "$bundle_dir"/lib/*.lib; do dumpbin /headers "$archive" | grep -i "$machine"; done
+              for archive in "$bundle_dir"/lib/*.lib; do
+                dumpbin /headers "$archive" | grep -i "$machine"
+                directives=$(dumpbin /directives "$archive")
+                grep -qi 'DEFAULTLIB:MSVCRT' <<<"$directives"
+                if grep -qi 'DEFAULTLIB:LIBCMT' <<<"$directives"; then
+                  echo "static CRT contamination in $archive" >&2
+                  exit 1
+                fi
+              done
               ;;
           esac
 
