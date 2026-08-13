@@ -73,6 +73,7 @@ if(WIN32)
     endif()
     execute_process(
         COMMAND "${PYTHON_EXECUTABLE}" "${NORMALIZE_MSVC_SCRIPT}"
+                "${FORBIDDEN_SOURCE}" "${FORBIDDEN_BUILD}"
                 "${_root}/lib/${EMBEDDED_NAME}"
                 "${_root}/lib/${CAPSTONE_NAME}"
                 "${_root}/lib/${ZSTD_NAME}"
