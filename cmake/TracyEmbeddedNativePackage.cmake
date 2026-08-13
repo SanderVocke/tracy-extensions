@@ -83,6 +83,7 @@ if(NOT _git_result EQUAL 0 OR NOT _source_commit_length EQUAL 40 OR NOT _source_
 endif()
 
 if(WIN32)
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
     set(_archive_name "tracy-embedded-native-${TRACY_EMBEDDED_NATIVE_PLATFORM}.zip")
     set(_embedded_name tracy_embedded_capture_native.lib)
     set(_capstone_name capstone.lib)
@@ -110,7 +111,8 @@ add_custom_target(
         "-DEMBEDDED_NAME=${_embedded_name}"
         "-DCAPSTONE_NAME=${_capstone_name}"
         "-DZSTD_NAME=${_zstd_name}"
-        "-DLIB_TOOL=${CMAKE_AR}"
+        "-DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
+        "-DNORMALIZE_MSVC_SCRIPT=${PROJECT_SOURCE_DIR}/cmake/NormalizeMsvcArchive.py"
         "-DHEADER_SOURCE=${PROJECT_SOURCE_DIR}/tracy-embedded-capture/include/tracy_embedded_capture/embedded_capture.h"
         "-DLICENSE_APACHE=${PROJECT_SOURCE_DIR}/tracy-embedded-capture/rust/tracy-client-sys/LICENSE-APACHE"
         "-DLICENSE_MIT=${PROJECT_SOURCE_DIR}/tracy-embedded-capture/rust/tracy-client-sys/LICENSE-MIT"
@@ -143,6 +145,7 @@ add_custom_target(
         tracy_embedded_capture_native capstone_static libzstd_static
         "${PROJECT_SOURCE_DIR}/cmake/PackageTracyEmbeddedNative.cmake"
         "${PROJECT_SOURCE_DIR}/cmake/VerifyTracyEmbeddedNative.cmake"
+        "${PROJECT_SOURCE_DIR}/cmake/NormalizeMsvcArchive.py"
     BYPRODUCTS "${_archive}"
     COMMENT "Building and verifying ${_archive_name}"
     VERBATIM
