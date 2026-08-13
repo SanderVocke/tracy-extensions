@@ -168,7 +168,7 @@ jobs:
             -P cmake/VerifyTracyEmbeddedNative.cmake
           case "${{ matrix.platform }}" in
             linux-*)
-              machine=$(case "${{ matrix.platform }}" in *x86_64) echo 'x86-64' ;; *) echo 'ARM aarch64' ;; esac)
+              if [[ "${{ matrix.platform }}" = *x86_64 ]]; then machine='x86-64'; else machine='ARM aarch64'; fi
               for archive in "$bundle_dir"/lib/*.a; do
                 member=$(ar t "$archive" | head -1)
                 rm -rf architecture-check && mkdir architecture-check
@@ -177,11 +177,11 @@ jobs:
               done
               ;;
             macos-*)
-              arch=$(case "${{ matrix.platform }}" in *x86_64) echo x86_64 ;; *) echo arm64 ;; esac)
+              if [[ "${{ matrix.platform }}" = *x86_64 ]]; then arch=x86_64; else arch=arm64; fi
               for archive in "$bundle_dir"/lib/*.a; do lipo -archs "$archive" | grep -w "$arch"; done
               ;;
             windows-*)
-              machine=$(case "${{ matrix.platform }}" in *x86_64) echo x64 ;; *) echo ARM64 ;; esac)
+              if [[ "${{ matrix.platform }}" = *x86_64 ]]; then machine=x64; else machine=ARM64; fi
               for archive in "$bundle_dir"/lib/*.lib; do
                 dumpbin /headers "$archive" | grep -i "$machine"
                 directives=$(dumpbin /directives "$archive")
