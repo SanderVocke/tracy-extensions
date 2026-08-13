@@ -184,6 +184,7 @@ jobs:
               if [[ "${{ matrix.platform }}" = *x86_64 ]]; then machine=x64; else machine=ARM64; fi
               vswhere='/c/Program Files (x86)/Microsoft Visual Studio/Installer/vswhere.exe'
               vsroot=$("$vswhere" -latest -property installationPath | tr -d '\r')
+              vsroot=$(cygpath -u "$vsroot")
               dumpbin=$(find "$vsroot/VC/Tools/MSVC" -path '*/bin/Hostx64/x64/dumpbin.exe' | sort -V | tail -1)
               test -x "$dumpbin"
               for archive in "$bundle_dir"/lib/*.lib; do
