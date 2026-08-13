@@ -15,3 +15,10 @@ The package name and 0.28.0 version are retained so Cargo `[patch.crates-io]`
 substitution satisfies `tracy-client` 0.18.4's `>=0.23,<0.29` dependency. This
 fork is initially intended only as a path or git patch and is not published to
 crates.io.
+
+Release 0.5.0 adds normalized binary-bundle format 1/profile
+`embedded-capture-v1`. The manifest records all source commits, compiler/runtime
+policy, target, profile, inventory, and payload hashes. Any Tracy pin, protocol,
+native option, archive ABI, deployment baseline, or patched source change must
+revise the profile/format as appropriate and regenerate and consume-test all six
+platform bundles; updating only one archive is not a valid release.

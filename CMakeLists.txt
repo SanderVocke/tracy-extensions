@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.24)
 
-project(tracy-extensions VERSION 0.4.0 LANGUAGES C CXX)
+project(tracy-extensions VERSION 0.5.0 LANGUAGES C CXX)
 
 set(_tracy_query_static_default OFF)
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
@@ -18,6 +18,25 @@ if(TRACY_QUERY_FULLY_STATIC AND NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
 endif()
 
 option(TRACY_QUERY_STATIC_MSVC_RUNTIME "Use the static MSVC runtime" ON)
+option(
+    TRACY_EMBEDDED_NATIVE_PACKAGE
+    "Configure a clean canonical embedded-native release package build"
+    OFF
+)
+set(
+    TRACY_EMBEDDED_NATIVE_TARGET_TRIPLE "" CACHE STRING
+    "Canonical Rust target triple for an embedded-native release package"
+)
+set(
+    TRACY_EMBEDDED_NATIVE_PLATFORM "" CACHE STRING
+    "Release asset platform stem (linux-x86_64, macos-arm64, etc.)"
+)
+if(TRACY_EMBEDDED_NATIVE_PACKAGE AND TRACY_QUERY_STATIC_MSVC_RUNTIME)
+    message(FATAL_ERROR
+        "TRACY_EMBEDDED_NATIVE_PACKAGE requires TRACY_QUERY_STATIC_MSVC_RUNTIME=OFF; "
+        "published Windows native archives use the dynamic MSVC CRT"
+    )
+endif()
 if(MSVC AND TRACY_QUERY_STATIC_MSVC_RUNTIME)
     set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 endif()
@@ -47,6 +66,38 @@ option(TRACY_NATIVE_CRASH_HANDLER "Enable Tracy crash handler" OFF)
 option(TRACY_NATIVE_VERIFY "Enable Tracy instrumentation verification" OFF)
 option(TRACY_NATIVE_DEMANGLE "Enable Tracy demangling hook" OFF)
 option(TRACY_NATIVE_FIBERS "Enable Tracy fibers" OFF)
+
+if(TRACY_EMBEDDED_NATIVE_PACKAGE)
+    if(BUILD_TESTING)
+        message(FATAL_ERROR "TRACY_EMBEDDED_NATIVE_PACKAGE requires BUILD_TESTING=OFF")
+    endif()
+    if(NOT CMAKE_BUILD_TYPE STREQUAL "Release" AND NOT CMAKE_CONFIGURATION_TYPES)
+        message(FATAL_ERROR "TRACY_EMBEDDED_NATIVE_PACKAGE requires CMAKE_BUILD_TYPE=Release")
+    endif()
+    if(TRACY_EMBEDDED_NATIVE_TARGET_TRIPLE STREQUAL "" OR TRACY_EMBEDDED_NATIVE_PLATFORM STREQUAL "")
+        message(FATAL_ERROR
+            "TRACY_EMBEDDED_NATIVE_TARGET_TRIPLE and TRACY_EMBEDDED_NATIVE_PLATFORM are required"
+        )
+    endif()
+    set(TRACY_NATIVE_ON_DEMAND ON CACHE BOOL "" FORCE)
+    set(TRACY_NATIVE_MANUAL_LIFETIME ON CACHE BOOL "" FORCE)
+    set(TRACY_NATIVE_DELAYED_INIT ON CACHE BOOL "" FORCE)
+    set(TRACY_NATIVE_TIMER_FALLBACK ON CACHE BOOL "" FORCE)
+    foreach(_feature IN ITEMS
+        FLUSH_ON_EXIT DEBUGINFOD ONLY_LOCALHOST ONLY_IPV4 SYSTEM_TRACING
+        CONTEXT_SWITCH SAMPLING CODE_TRANSFER BROADCAST CALLSTACK_INLINES
+        CRASH_HANDLER VERIFY DEMANGLE FIBERS
+    )
+        set(TRACY_NATIVE_${_feature} OFF CACHE BOOL "" FORCE)
+    endforeach()
+    if(APPLE)
+        if(NOT CMAKE_OSX_DEPLOYMENT_TARGET STREQUAL "12.0")
+            message(FATAL_ERROR
+                "macOS embedded-native packages require CMAKE_OSX_DEPLOYMENT_TARGET=12.0"
+            )
+        endif()
+    endif()
+endif()
 
 function(tracy_native_configure_client target force_manual_lifetime)
     target_compile_definitions(${target} PUBLIC TRACY_ENABLE)
@@ -106,3 +157,7 @@ include(CTest)
 add_subdirectory(tracy-embedded-capture)
 add_subdirectory(tracy-query)
 add_subdirectory(tracy-nextest-capture)
+
+if(TRACY_EMBEDDED_NATIVE_PACKAGE)
+    include(cmake/TracyEmbeddedNativePackage.cmake)
+endif()

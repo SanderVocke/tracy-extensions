@@ -2,6 +2,8 @@ use std::env;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+mod prebuilt;
+
 fn feature(name: &str) -> bool {
     env::var_os(format!(
         "CARGO_FEATURE_{}",
@@ -49,8 +51,10 @@ fn link_search(path: &Path) {
 fn main() {
     println!("cargo:rerun-if-env-changed=CMAKE");
     println!("cargo:rerun-if-env-changed=CMAKE_GENERATOR");
+    println!("cargo:rerun-if-env-changed=TRACY_CLIENT_SYS_PREBUILT_DIR");
     println!("cargo:rerun-if-env-changed=TRACY_QUERY_CMAKE_BUILD_DIR");
     println!("cargo:rerun-if-env-changed=TRACY_QUERY_NATIVE_SANITIZER_LIBS");
+    println!("cargo:rerun-if-changed=prebuilt.rs");
     println!("cargo:rerun-if-changed=../../../CMakeLists.txt");
     println!("cargo:rerun-if-changed=../../../cmake/TracyServer.cmake");
     println!("cargo:rerun-if-changed=../../src");
@@ -59,17 +63,6 @@ fn main() {
     if env::var_os("DOCS_RS").as_deref() == Some(std::ffi::OsStr::new("1")) || !feature("enable") {
         return;
     }
-
-    let manifest = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
-    let root = manifest
-        .join("../../..")
-        .canonicalize()
-        .expect("repository root");
-    let prebuilt = env::var_os("TRACY_QUERY_CMAKE_BUILD_DIR").map(PathBuf::from);
-    let build = prebuilt
-        .clone()
-        .unwrap_or_else(|| PathBuf::from(env::var_os("OUT_DIR").unwrap()).join("native"));
-    let cmake = env::var_os("CMAKE").unwrap_or_else(|| "cmake".into());
 
     let mappings = [
         ("ondemand", "ON_DEMAND"),
@@ -96,67 +89,133 @@ fn main() {
     } else {
         "tracy_instrumentation_client_native"
     };
+    let target_features = env::var("CARGO_CFG_TARGET_FEATURE").unwrap_or_default();
+    let crt_static = target_features.split(',').any(|item| item == "crt-static");
 
-    if prebuilt.is_none() {
-        let mut configure = Command::new(&cmake);
-        configure
-            .arg("-S")
-            .arg(&root)
-            .arg("-B")
-            .arg(&build)
-            .arg("-DCMAKE_BUILD_TYPE=Release")
-            .arg("-DBUILD_TESTING=OFF")
-            .arg("-DTRACY_QUERY_FULLY_STATIC=OFF")
-            .arg(format!(
-                "-DTRACY_QUERY_STATIC_MSVC_RUNTIME={}",
-                if env::var("CARGO_CFG_TARGET_FEATURE")
-                    .unwrap_or_default()
-                    .split(',')
-                    .any(|feature| feature == "crt-static")
-                {
-                    "ON"
-                } else {
-                    "OFF"
-                }
-            ));
-        for (cargo, cmake_name) in mappings {
-            configure.arg(format!(
-                "-DTRACY_NATIVE_{cmake_name}={}",
-                if feature(cargo) { "ON" } else { "OFF" }
-            ));
+    if let Some(directory) = env::var_os("TRACY_CLIENT_SYS_PREBUILT_DIR") {
+        let required = [
+            "enable",
+            "embedded-capture",
+            "ondemand",
+            "manual-lifetime",
+            "delayed-init",
+            "timer-fallback",
+        ];
+        let missing: Vec<_> = required.into_iter().filter(|name| !feature(name)).collect();
+        if !missing.is_empty() {
+            panic!(
+                "TRACY_CLIENT_SYS_PREBUILT_DIR bundle validation failed: embedded-capture-v1 requires Cargo features {}",
+                missing.join(", ")
+            );
         }
-        run_with_retries(
-            &mut configure,
-            "CMake configure for patched tracy-client-sys",
+        let forbidden: Vec<_> = mappings
+            .iter()
+            .map(|(name, _)| *name)
+            .filter(|name| !required.contains(name) && feature(name))
+            .collect();
+        if !forbidden.is_empty() {
+            panic!(
+                "TRACY_CLIENT_SYS_PREBUILT_DIR bundle validation failed: embedded-capture-v1 does not support Cargo features {} (build from source instead)",
+                forbidden.join(", ")
+            );
+        }
+        let target_triple = env::var("TARGET").expect("Cargo did not set TARGET");
+        let target_arch =
+            env::var("CARGO_CFG_TARGET_ARCH").expect("Cargo did not set target architecture");
+        let target_os = env::var("CARGO_CFG_TARGET_OS").expect("Cargo did not set target OS");
+        let bundle = prebuilt::validate(
+            &PathBuf::from(directory),
+            &target_triple,
+            &target_arch,
+            &target_os,
+            crt_static,
+        )
+        .unwrap_or_else(|error| {
+            panic!("TRACY_CLIENT_SYS_PREBUILT_DIR bundle validation failed: {error}")
+        });
+        println!(
+            "cargo:rustc-link-search=native={}",
+            bundle.lib_dir.display()
         );
-
-        let mut compile = Command::new(&cmake);
-        compile
-            .arg("--build")
-            .arg(&build)
-            .arg("--config")
-            .arg("Release")
-            .arg("--target")
-            .arg(target)
-            .arg("--parallel")
-            .arg("2");
-        run(&mut compile, "CMake native Tracy build");
-    }
-
-    link_search(&build);
-    link_search(&build.join("tracy-embedded-capture"));
-    println!("cargo:rustc-link-lib=static={target}");
-    if feature("embedded-capture") {
-        let capstone = build.join("_deps/tracy_capstone-build");
-        let zstd = build.join("_deps/tracy_zstd-build/lib");
-        link_search(&capstone.join("capstone.dir"));
-        link_search(&capstone);
-        link_search(&zstd);
+        println!("cargo:rustc-link-lib=static=tracy_embedded_capture_native");
         println!("cargo:rustc-link-lib=static=capstone");
-        if env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
+        if target_os == "windows" {
             println!("cargo:rustc-link-lib=static=zstd_static");
         } else {
             println!("cargo:rustc-link-lib=static=zstd");
+        }
+        // Reading these names proves validation selected all three manifest entries;
+        // link directives remain stable public names rather than path-dependent values.
+        let _validated_archives = (
+            bundle.embedded_archive,
+            bundle.capstone_archive,
+            bundle.zstd_archive,
+        );
+    } else {
+        let manifest = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
+        let root = manifest
+            .join("../../..")
+            .canonicalize()
+            .expect("repository root");
+        let prepared = env::var_os("TRACY_QUERY_CMAKE_BUILD_DIR").map(PathBuf::from);
+        let build = prepared
+            .clone()
+            .unwrap_or_else(|| PathBuf::from(env::var_os("OUT_DIR").unwrap()).join("native"));
+        let cmake = env::var_os("CMAKE").unwrap_or_else(|| "cmake".into());
+
+        if prepared.is_none() {
+            let mut configure = Command::new(&cmake);
+            configure
+                .arg("-S")
+                .arg(&root)
+                .arg("-B")
+                .arg(&build)
+                .arg("-DCMAKE_BUILD_TYPE=Release")
+                .arg("-DBUILD_TESTING=OFF")
+                .arg("-DTRACY_QUERY_FULLY_STATIC=OFF")
+                .arg(format!(
+                    "-DTRACY_QUERY_STATIC_MSVC_RUNTIME={}",
+                    if crt_static { "ON" } else { "OFF" }
+                ));
+            for (cargo, cmake_name) in mappings {
+                configure.arg(format!(
+                    "-DTRACY_NATIVE_{cmake_name}={}",
+                    if feature(cargo) { "ON" } else { "OFF" }
+                ));
+            }
+            run_with_retries(
+                &mut configure,
+                "CMake configure for patched tracy-client-sys",
+            );
+
+            let mut compile = Command::new(&cmake);
+            compile
+                .arg("--build")
+                .arg(&build)
+                .arg("--config")
+                .arg("Release")
+                .arg("--target")
+                .arg(target)
+                .arg("--parallel")
+                .arg("2");
+            run(&mut compile, "CMake native Tracy build");
+        }
+
+        link_search(&build);
+        link_search(&build.join("tracy-embedded-capture"));
+        println!("cargo:rustc-link-lib=static={target}");
+        if feature("embedded-capture") {
+            let capstone = build.join("_deps/tracy_capstone-build");
+            let zstd = build.join("_deps/tracy_zstd-build/lib");
+            link_search(&capstone.join("capstone.dir"));
+            link_search(&capstone);
+            link_search(&zstd);
+            println!("cargo:rustc-link-lib=static=capstone");
+            if env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
+                println!("cargo:rustc-link-lib=static=zstd_static");
+            } else {
+                println!("cargo:rustc-link-lib=static=zstd");
+            }
         }
     }
 

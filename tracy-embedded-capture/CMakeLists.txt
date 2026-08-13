@@ -53,6 +53,32 @@ if(BUILD_TESTING)
     target_compile_definitions(tracy_embedded_capture_native PRIVATE TRACY_EMBEDDED_CAPTURE_TESTING=1)
 endif()
 
+if(TRACY_EMBEDDED_NATIVE_PACKAGE)
+    set_target_properties(
+        tracy_embedded_capture_native capstone_static libzstd_static
+        PROPERTIES POSITION_INDEPENDENT_CODE ON
+    )
+    foreach(_target IN ITEMS tracy_embedded_capture_native capstone_static libzstd_static)
+        if(MSVC)
+            target_compile_options(
+                ${_target} PRIVATE
+                "/pathmap:${PROJECT_SOURCE_DIR}=."
+                "/pathmap:${PROJECT_BINARY_DIR}=.build"
+            )
+            set_property(
+                TARGET ${_target} PROPERTY
+                MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL"
+            )
+        else()
+            target_compile_options(
+                ${_target} PRIVATE
+                "-ffile-prefix-map=${PROJECT_SOURCE_DIR}=."
+                "-ffile-prefix-map=${PROJECT_BINARY_DIR}=.build"
+            )
+        endif()
+    endforeach()
+endif()
+
 
 if(BUILD_TESTING)
     add_executable(

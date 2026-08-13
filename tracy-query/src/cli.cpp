@@ -395,7 +395,7 @@ void print_help(std::ostream& output, const std::string_view program,
 }
 
 void print_version(std::ostream& output) {
-    output << "tracy-query 0.4.0 (Tracy parser 0.13.1)\n";
+    output << "tracy-query 0.5.0 (Tracy parser 0.13.1)\n";
 }
 
 }  // namespace tracy_query

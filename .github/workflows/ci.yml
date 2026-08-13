@@ -20,27 +20,39 @@ jobs:
         include:
           - runner: ubuntu-24.04
             platform: linux-x86_64
+            target_triple: x86_64-unknown-linux-gnu
             cmake_args: -DTRACY_QUERY_FULLY_STATIC=ON
+            package_args: ""
             suffix: ""
           - runner: ubuntu-24.04-arm
             platform: linux-arm64
+            target_triple: aarch64-unknown-linux-gnu
             cmake_args: -DTRACY_QUERY_FULLY_STATIC=ON
+            package_args: ""
             suffix: ""
           - runner: macos-15-intel
             platform: macos-x86_64
+            target_triple: x86_64-apple-darwin
             cmake_args: -DTRACY_QUERY_FULLY_STATIC=OFF
+            package_args: -DCMAKE_OSX_DEPLOYMENT_TARGET=12.0
             suffix: ""
           - runner: macos-15
             platform: macos-arm64
+            target_triple: aarch64-apple-darwin
             cmake_args: -DTRACY_QUERY_FULLY_STATIC=OFF
+            package_args: -DCMAKE_OSX_DEPLOYMENT_TARGET=12.0
             suffix: ""
           - runner: windows-2025
             platform: windows-x86_64
+            target_triple: x86_64-pc-windows-msvc
             cmake_args: -A x64
+            package_args: -A x64
             suffix: ".exe"
           - runner: windows-11-arm
             platform: windows-arm64
+            target_triple: aarch64-pc-windows-msvc
             cmake_args: -A ARM64
+            package_args: -A ARM64
             suffix: ".exe"
     runs-on: ${{ matrix.runner }}
     steps:
@@ -77,6 +89,7 @@ jobs:
             if cmake -S . -B build \
               -DCMAKE_BUILD_TYPE=Release \
               -DBUILD_TESTING=ON \
+              -DTRACY_NATIVE_TIMER_FALLBACK=ON \
               -DCARGO_NEXTEST_IN_PROCESS_EXECUTABLE=/tmp/cargo-nextest-bin/cargo-nextest${{ matrix.suffix }} \
               ${{ matrix.cmake_args }}; then
               break
@@ -94,6 +107,18 @@ jobs:
         env:
           CARGO_NET_OFFLINE: "true"
         run: ctest --test-dir build -C Release --output-on-failure
+
+      - name: Exercise patched sys source-build mode
+        if: matrix.platform == 'linux-x86_64'
+        env:
+          CARGO_NET_OFFLINE: "true"
+          CARGO_TARGET_DIR: ${{ github.workspace }}/sys-source-target
+        shell: bash
+        run: |
+          cargo test --locked \
+            --manifest-path tracy-embedded-capture/rust/tracy-client-sys/Cargo.toml \
+            --no-default-features --features enable,manual-lifetime,timer-fallback \
+            --test ordinary-client
 
       - name: Upload in-process capture failure diagnostics
         if: failure()
@@ -113,15 +138,128 @@ jobs:
           cmake --install build --config Release --prefix stage
           mkdir -p dist
           query="stage/bin/tracy-query${{ matrix.suffix }}"
-          "$query" --version | grep 'tracy-query 0.4.0 (Tracy parser 0.13.1)'
+          "$query" --version | grep 'tracy-query 0.5.0 (Tracy parser 0.13.1)'
           cmake -E copy "$query" "dist/tracy-query-${{ matrix.platform }}${{ matrix.suffix }}"
           test -s "dist/tracy-query-${{ matrix.platform }}${{ matrix.suffix }}"
+
+      - name: Configure clean embedded-native package
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S . -B package-build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_TESTING=OFF \
+            -DTRACY_QUERY_FULLY_STATIC=OFF \
+            -DTRACY_QUERY_STATIC_MSVC_RUNTIME=OFF \
+            -DTRACY_EMBEDDED_NATIVE_PACKAGE=ON \
+            -DTRACY_EMBEDDED_NATIVE_PLATFORM=${{ matrix.platform }} \
+            -DTRACY_EMBEDDED_NATIVE_TARGET_TRIPLE=${{ matrix.target_triple }} \
+            ${{ matrix.package_args }}
+
+      - name: Build and verify embedded-native package
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake --build package-build --config Release \
+            --target tracy-embedded-native-package --parallel 2
+          bundle_dir="$PWD/package-build/tracy-embedded-native-package/tracy-embedded-native"
+          cmake -DBUNDLE_DIR="$bundle_dir" \
+            -DEXPECTED_TARGET=${{ matrix.target_triple }} \
+            -P cmake/VerifyTracyEmbeddedNative.cmake
+          case "${{ matrix.platform }}" in
+            linux-*)
+              machine=$(case "${{ matrix.platform }}" in *x86_64) echo 'x86-64' ;; *) echo 'ARM aarch64' ;; esac)
+              for archive in "$bundle_dir"/lib/*.a; do
+                member=$(ar t "$archive" | head -1)
+                rm -rf architecture-check && mkdir architecture-check
+                (cd architecture-check && ar x "$archive" "$member")
+                file "architecture-check/$member" | grep "$machine"
+              done
+              ;;
+            macos-*)
+              arch=$(case "${{ matrix.platform }}" in *x86_64) echo x86_64 ;; *) echo arm64 ;; esac)
+              for archive in "$bundle_dir"/lib/*.a; do lipo -archs "$archive" | grep -w "$arch"; done
+              ;;
+            windows-*)
+              machine=$(case "${{ matrix.platform }}" in *x86_64) echo x64 ;; *) echo ARM64 ;; esac)
+              for archive in "$bundle_dir"/lib/*.lib; do dumpbin /headers "$archive" | grep -i "$machine"; done
+              ;;
+          esac
+
+      - name: Link native consumer from extracted package only
+        shell: bash
+        run: |
+          set -euo pipefail
+          bundle_dir="$PWD/package-build/tracy-embedded-native-package/tracy-embedded-native"
+          cmake -S tracy-embedded-capture/tests/package-consumer -B package-consumer-build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DTRACY_EMBEDDED_NATIVE_DIR="$bundle_dir" \
+            ${{ matrix.package_args }}
+          cmake --build package-consumer-build --config Release --parallel 2
+          if [[ "${{ runner.os }}" = Windows ]]; then
+            package-consumer-build/Release/package-consumer.exe
+          else
+            package-consumer-build/package-consumer
+          fi
+
+      - name: Build and validate Rust captures from package with CMake unavailable
+        env:
+          CARGO_NET_OFFLINE: "true"
+        shell: bash
+        run: |
+          set -euo pipefail
+          bundle_dir="$PWD/package-build/tracy-embedded-native-package/tracy-embedded-native"
+          query="$PWD/stage/bin/tracy-query${{ matrix.suffix }}"
+          rm -rf prebuilt-consumer-target
+          python3 tracy-embedded-capture/examples/rust-embedded-capture/run_demo.py \
+            --mode normal --output "$PWD/prebuilt-normal.tracy" --query "$query" \
+            --target-dir "$PWD/prebuilt-consumer-target" --prebuilt-dir "$bundle_dir"
+          python3 tracy-embedded-capture/examples/rust-embedded-capture/run_demo.py \
+            --mode unwind-panic --output "$PWD/prebuilt-panic.tracy" --query "$query" \
+            --target-dir "$PWD/prebuilt-consumer-target" --prebuilt-dir "$bundle_dir" --release
+
+      - name: Exercise explicit prebuilt rejection diagnostics
+        if: matrix.platform == 'linux-x86_64'
+        shell: bash
+        run: |
+          python3 tracy-embedded-capture/tests/test_prebuilt_rejections.py \
+            --bundle "$PWD/package-build/tracy-embedded-native-package/tracy-embedded-native" \
+            --example-manifest tracy-embedded-capture/examples/rust-embedded-capture/Cargo.toml \
+            --sys-manifest tracy-embedded-capture/rust/tracy-client-sys/Cargo.toml \
+            --target-dir "$PWD/prebuilt-rejection-target"
+
+      - name: Reject static MSVC CRT in prebuilt mode
+        if: matrix.platform == 'windows-x86_64'
+        shell: bash
+        run: |
+          set -euo pipefail
+          bundle_dir="$PWD/package-build/tracy-embedded-native-package/tracy-embedded-native"
+          set +e
+          output=$(TRACY_CLIENT_SYS_PREBUILT_DIR="$bundle_dir" \
+            CMAKE=cmake-must-not-run-in-prebuilt-mode \
+            RUSTFLAGS='-C target-feature=+crt-static' \
+            CARGO_TARGET_DIR="$PWD/prebuilt-crt-rejection-target" \
+            cargo check --locked --offline \
+              --manifest-path tracy-embedded-capture/rust/tracy-client-sys/Cargo.toml \
+              --no-default-features --features embedded-capture 2>&1)
+          status=$?
+          set -e
+          test "$status" -ne 0
+          grep -F 'requires the dynamic MSVC CRT' <<<"$output"
 
       - name: Upload uncompressed query binary
         uses: actions/upload-artifact@v7
         with:
           name: tracy-query-${{ matrix.platform }}
           path: dist/tracy-query-${{ matrix.platform }}${{ matrix.suffix }}
+          archive: false
+          if-no-files-found: error
+
+      - name: Upload compressed embedded-native bundle
+        uses: actions/upload-artifact@v7
+        with:
+          name: tracy-embedded-native-${{ matrix.platform }}
+          path: package-build/dist/tracy-embedded-native-${{ matrix.platform }}.*
           archive: false
           if-no-files-found: error
 
@@ -145,6 +283,7 @@ jobs:
               -DCMAKE_BUILD_TYPE=Debug \
               -DBUILD_TESTING=ON \
               -DTRACY_QUERY_FULLY_STATIC=OFF \
+              -DTRACY_NATIVE_TIMER_FALLBACK=ON \
               -DCARGO_NEXTEST_IN_PROCESS_EXECUTABLE=/tmp/cargo-nextest-bin/cargo-nextest \
               "-DCMAKE_C_FLAGS=-fsanitize=address,undefined -fno-sanitize=alignment" \
               "-DCMAKE_CXX_FLAGS=-fsanitize=address,undefined -fno-sanitize=alignment" \
@@ -185,30 +324,23 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Download uncompressed query binaries
+      - name: Download release products
         uses: actions/download-artifact@v8
         with:
-          pattern: tracy-query-*
+          pattern: tracy-*
           path: release
           merge-multiple: true
 
-      - name: Verify release files
+      - name: Verify release files and exact tag commit
         shell: bash
         run: |
           set -euo pipefail
-          test "${GITHUB_REF_NAME}" = "v0.4.0"
-          expected=(
-            tracy-query-linux-x86_64
-            tracy-query-linux-arm64
-            tracy-query-macos-x86_64
-            tracy-query-macos-arm64
-            tracy-query-windows-x86_64.exe
-            tracy-query-windows-arm64.exe
-          )
-          test "$(find release -maxdepth 1 -type f | wc -l)" -eq "${#expected[@]}"
-          for file in "${expected[@]}"; do
-            test -s "release/$file"
-          done
+          test "${GITHUB_REF_NAME}" = "v0.5.0"
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          test "$(git rev-list -n1 v0.5.0)" = "${GITHUB_SHA}"
+          .github/scripts/verify-release-files.sh release
+          (cd release && sha256sum tracy-* > SHA256SUMS)
+          test "$(wc -l < release/SHA256SUMS)" -eq 12
 
       - name: Publish release
         env:
@@ -217,13 +349,13 @@ jobs:
         shell: bash
         run: |
           cat > release-notes.md <<'EOF'
-          `tracy-extensions` 0.4.0 includes `tracy-query` for Tracy Profiler 0.13.1 captures and provides failure-only in-process per-test capture for cargo-nextest.
+          `tracy-extensions` 0.5.0 provides `tracy-query` and relocatable embedded-capture native libraries for Tracy Profiler 0.13.1/protocol 76.
 
-          This release provides `tracy-query` for Linux, macOS, and Windows on x86-64 and ARM64. Tracy and all bundled third-party dependencies are statically linked. Linux binaries are fully static; Windows binaries use the static MSVC runtime; macOS retains only operating-system runtime dependencies.
+          Six query executables and six `tracy-embedded-native` bundles cover Linux, macOS, and Windows on x86-64 and ARM64. Native bundles use profile `embedded-capture-v1`; Windows query executables retain the static MSVC runtime while Windows native libraries use the dynamic MSVC CRT required by ordinary Rust MSVC targets.
 
-          See `README.md` for CLI usage, `tracy-nextest-capture/docs/usage.md` for per-test capture, and `tracy-query/SKILL.md` for the LLM-agent debugging workflow.
+          Verify downloads with `SHA256SUMS`. See `README.md` and `tracy-embedded-capture/docs/rust.md` for the CMake-free Rust workflow and compatibility limits.
           EOF
-          gh release create "${GITHUB_REF_NAME}" release/tracy-query-* \
+          gh release create "${GITHUB_REF_NAME}" release/tracy-* release/SHA256SUMS \
             --verify-tag \
-            --title "tracy-extensions 0.4.0" \
+            --title "tracy-extensions 0.5.0" \
             --notes-file release-notes.md

@@ -40,6 +40,8 @@ def main():
     parser.add_argument("--query", type=Path, required=True)
     parser.add_argument("--manifest", type=Path, default=Path(__file__).with_name("Cargo.toml"))
     parser.add_argument("--target-dir", type=Path)
+    parser.add_argument("--prebuilt-dir", type=Path)
+    parser.add_argument("--release", action="store_true")
     args = parser.parse_args()
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
@@ -51,6 +53,9 @@ def main():
     environment = os.environ.copy()
     if args.target_dir:
         environment["CARGO_TARGET_DIR"] = str(args.target_dir.resolve())
+    if args.prebuilt_dir:
+        environment["TRACY_CLIENT_SYS_PREBUILT_DIR"] = str(args.prebuilt_dir.resolve())
+        environment["CMAKE"] = "cmake-must-not-run-in-prebuilt-mode"
 
     tree = run([
         "cargo", "tree", "--manifest-path", str(args.manifest),
@@ -67,10 +72,14 @@ def main():
     occupied = occupy_tracy_ports()
     try:
         expected = 0 if args.mode == "normal" else 101
-        result = run([
-            "cargo", "run", "--quiet", "--manifest-path", str(args.manifest), "--",
+        cargo_command = ["cargo", "run", "--quiet"]
+        if args.release:
+            cargo_command.append("--release")
+        cargo_command += [
+            "--manifest-path", str(args.manifest), "--",
             args.mode, str(args.output),
-        ], env=environment, expected=expected)
+        ]
+        result = run(cargo_command, env=environment, expected=expected)
     finally:
         for listener in occupied:
             listener.close()

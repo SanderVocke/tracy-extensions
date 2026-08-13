@@ -29,7 +29,19 @@ python3 tracy-embedded-capture/examples/rust-embedded-capture/run_demo.py \
   --mode unwind-panic --output out/panic.tracy --query build/tracy-query
 ```
 
-See [architecture/lifecycle](docs/architecture.md) and [Rust integration](docs/rust.md).
+## Prebuilt native bundles
+
+Release 0.5.0 includes format-1 bundles for GNU Linux, macOS 12+, and Windows
+MSVC on x86-64 and ARM64. Each contains the public header and independently
+linkable embedded-capture, Capstone, and zstd static archives under one
+normalized `tracy-embedded-native/` directory. Set
+`TRACY_CLIENT_SYS_PREBUILT_DIR` to that extracted directory to build the exact
+`embedded-capture-v1` Rust profile without CMake. Windows bundles use the
+dynamic MSVC CRT; unsupported features, targets, CRTs, versions, profiles, and
+checksum failures are rejected before linking.
+
+See [architecture/lifecycle](docs/architecture.md) and the copy-paste
+[Rust source/prebuilt integration guide](docs/rust.md).
 
 ## Safety contract
 

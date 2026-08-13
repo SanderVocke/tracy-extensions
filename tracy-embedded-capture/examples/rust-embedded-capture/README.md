@@ -25,6 +25,11 @@ python3 tracy-embedded-capture/examples/rust-embedded-capture/run_demo.py \
   --mode unwind-panic --output out/rust-panic.tracy --query build/tracy-query
 ```
 
+To test an extracted 0.5.0 bundle without CMake, add
+`--prebuilt-dir /path/to/tracy-embedded-native` and use a fresh `--target-dir`.
+The harness deliberately sets `CMAKE` to a nonexistent command in that mode.
+Add `--release` to exercise Cargo release linkage.
+
 The harness occupies Tracy's customary TCP port range and UDP discovery port
 while the app runs, checks that Cargo resolved exactly one patched sys package,
 expects panic mode's resumed-panic exit status, validates each capture with

@@ -46,7 +46,7 @@ demangle = []
 verify = []
 debuginfod = []
 crash-handler = []
-embedded-capture = ["enable", "manual-lifetime", "ondemand"]
+embedded-capture = ["enable", "manual-lifetime", "ondemand", "timer-fallback"]
 
 [package.metadata.docs.rs]
 all-features = true
