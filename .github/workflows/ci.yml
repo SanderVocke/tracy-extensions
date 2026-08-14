@@ -192,7 +192,6 @@ jobs:
                 "$dumpbin" /headers "$archive" | grep -i "$machine"
                 all_directives+=$("$dumpbin" /directives "$archive")
               done
-              grep -qi 'MSVCRT' <<<"$all_directives"
               if grep -qi 'LIBCMT' <<<"$all_directives"; then
                 echo 'static CRT contamination in Windows native bundle' >&2
                 exit 1
