@@ -29,17 +29,24 @@ stage/bin/tracy-query --version
 
 Linux release builds are fully static by default; Windows uses the static MSVC runtime. Use `-DTRACY_QUERY_FULLY_STATIC=OFF` for local Linux systems without static C/C++ runtime archives.
 
-## Release binaries
+## Release products
 
-Release 0.4.0 provides the `tracy-query` executable for Linux, macOS, and Windows on x86-64 and ARM64:
+Release 0.5.0 provides both `tracy-query` and prebuilt embedded-capture native libraries:
 
-| Platform | x86-64 | ARM64 |
+| Rust target | Query executable | Embedded-native bundle |
 |---|---|---|
-| Linux | `tracy-query-linux-x86_64` | `tracy-query-linux-arm64` |
-| macOS | `tracy-query-macos-x86_64` | `tracy-query-macos-arm64` |
-| Windows | `tracy-query-windows-x86_64.exe` | `tracy-query-windows-arm64.exe` |
+| `x86_64-unknown-linux-gnu` | `tracy-query-linux-x86_64` | `tracy-embedded-native-linux-x86_64.tar.gz` |
+| `aarch64-unknown-linux-gnu` | `tracy-query-linux-arm64` | `tracy-embedded-native-linux-arm64.tar.gz` |
+| `x86_64-apple-darwin` | `tracy-query-macos-x86_64` | `tracy-embedded-native-macos-x86_64.tar.gz` |
+| `aarch64-apple-darwin` | `tracy-query-macos-arm64` | `tracy-embedded-native-macos-arm64.tar.gz` |
+| `x86_64-pc-windows-msvc` | `tracy-query-windows-x86_64.exe` | `tracy-embedded-native-windows-x86_64.zip` |
+| `aarch64-pc-windows-msvc` | `tracy-query-windows-arm64.exe` | `tracy-embedded-native-windows-arm64.zip` |
 
-The embedded and nextest components are source integrations rather than standalone executables.
+Every bundle extracts as `tracy-embedded-native/`, with a checksummed manifest,
+public C header, three native static libraries, and licenses/provenance. The
+release-level `SHA256SUMS` covers all twelve product assets. See the
+[embedded Rust workflow](tracy-embedded-capture/docs/rust.md) for download,
+verification, Cargo patch, feature-profile, ABI, and source-build instructions.
 
 ## Shared guarantees and limits
 
