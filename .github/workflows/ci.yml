@@ -192,8 +192,8 @@ jobs:
                 "$dumpbin" /headers "$archive" | grep -i "$machine"
                 all_directives+=$("$dumpbin" /directives "$archive")
               done
-              if grep -qi 'LIBCMT' <<<"$all_directives"; then
-                echo 'static CRT contamination in Windows native bundle' >&2
+              if grep -Eqi "DEFAULTLIB:[\"']?LIBCMT(D)?([\"']|[[:space:]]|$)" <<<"$all_directives"; then
+                echo "static CRT contamination in Windows native bundle: $all_directives" >&2
                 exit 1
               fi
               ;;
