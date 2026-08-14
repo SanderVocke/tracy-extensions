@@ -50,6 +50,7 @@ jobs:
           pattern: tracy-*
           path: release
           merge-multiple: true
+          skip-decompress: true
 
       - name: Verify release files
         shell: bash

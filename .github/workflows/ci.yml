@@ -330,6 +330,7 @@ jobs:
           pattern: tracy-*
           path: release
           merge-multiple: true
+          skip-decompress: true
 
       - name: Verify release files and exact tag commit
         shell: bash
