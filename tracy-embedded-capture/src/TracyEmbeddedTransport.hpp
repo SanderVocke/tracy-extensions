@@ -24,6 +24,7 @@ bool HasData(void* endpoint);
 bool IsValid(void* endpoint);
 int Capacity(void* endpoint);
 void Cancel();
+void Reset();
 Statistics GetStatistics();
 const char* GetError();
 

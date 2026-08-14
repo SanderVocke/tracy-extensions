@@ -7,7 +7,7 @@ A collection of focused extensions around [Tracy Profiler](https://github.com/wo
 | Component | Deliverable | Use it when | Documentation |
 |---|---|---|---|
 | [`tracy-query`](tracy-query/) | `tracy-query` CLI and query library | Inspect, validate, and query existing `.tracy` captures without the GUI | [README](tracy-query/README.md) · [CLI reference](tracy-query/docs/cli.md) · [architecture](tracy-query/docs/architecture.md) |
-| [`tracy-embedded-capture`](tracy-embedded-capture/) | Native embedded capture library, C ABI v2, patched `tracy-client-sys` 0.28.0, and Rust example | Capture a normal Tracy client/server protocol session entirely inside one process | [README](tracy-embedded-capture/README.md) · [architecture and lifecycle](tracy-embedded-capture/docs/architecture.md) · [Rust integration](tracy-embedded-capture/docs/rust.md) |
+| [`tracy-embedded-capture`](tracy-embedded-capture/) | Native embedded capture library, C ABI v3, patched `tracy-client-sys` 0.28.0, and Rust example | Capture a normal Tracy client/server protocol session entirely inside one process | [README](tracy-embedded-capture/README.md) · [architecture and lifecycle](tracy-embedded-capture/docs/architecture.md) · [Rust integration](tracy-embedded-capture/docs/rust.md) |
 | [`tracy-nextest-capture`](tracy-nextest-capture/) | Rust runtime and attribute macro for cargo-nextest | Retain per-attempt traces on unwind panic or `Result::Err`, while discarding successful attempts without writing | [README](tracy-nextest-capture/README.md) · [usage and policy](tracy-nextest-capture/docs/usage.md) · [architecture](tracy-nextest-capture/docs/architecture.md) |
 
 The nextest component depends on embedded capture and uses `tracy-query` as its semantic test oracle. The root CMake project is a superbuild: Tracy pinning and static-link policy are shared, while each component owns its targets, tests, and detailed documentation.
@@ -31,7 +31,7 @@ Linux release builds are fully static by default; Windows uses the static MSVC r
 
 ## Release products
 
-Release 0.5.0 provides both `tracy-query` and prebuilt embedded-capture native libraries:
+Release 0.6.0 provides both `tracy-query` and ABI v3 prebuilt embedded-capture native libraries:
 
 | Rust target | Query executable | Embedded-native bundle |
 |---|---|---|
@@ -53,7 +53,7 @@ verification, Cargo patch, feature-profile, ABI, and source-build instructions.
 - Third-party sources are commit- and hash-pinned in [`cmake/TracyServer.cmake`](cmake/TracyServer.cmake).
 - The embedded boundary preserves Tracy's serialized, bidirectional protocol over bounded memory.
 - Capture finalization requires all instrumentation producers and guards to be quiescent.
-- Only one embedded capture lifecycle is supported per process.
+- At most one embedded capture Worker is active at once; the reusable API supports sequential capture files in one process.
 - Abort, fatal signals, timeouts, forced termination, OOM, and power loss cannot run an in-process finalizer; no trace is claimed for them.
 
 ## Repository migration

@@ -35,7 +35,7 @@ def occupy_tracy_ports():
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--mode", choices=("normal", "unwind-panic"), required=True)
+    parser.add_argument("--mode", choices=("normal", "unwind-panic", "repeated"), required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--query", type=Path, required=True)
     parser.add_argument("--manifest", type=Path, default=Path(__file__).with_name("Cargo.toml"))
@@ -45,10 +45,14 @@ def main():
     args = parser.parse_args()
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    if args.output.exists():
-        args.output.unlink()
-    for partial in args.output.parent.glob(args.output.name + ".*.partial"):
-        partial.unlink()
+    outputs = [args.output]
+    if args.mode == "repeated":
+        outputs.append(Path(str(args.output) + ".second.tracy"))
+    for output in outputs:
+        if output.exists():
+            output.unlink()
+        for partial in output.parent.glob(output.name + ".*.partial"):
+            partial.unlink()
 
     environment = os.environ.copy()
     if args.target_dir:
@@ -71,7 +75,7 @@ def main():
 
     occupied = occupy_tracy_ports()
     try:
-        expected = 0 if args.mode == "normal" else 101
+        expected = 101 if args.mode == "unwind-panic" else 0
         cargo_command = ["cargo", "run", "--quiet"]
         if args.release:
             cargo_command.append("--release")
@@ -86,30 +90,33 @@ def main():
 
     if args.mode == "unwind-panic" and "resuming original panic" not in result.stderr:
         raise RuntimeError(f"panic mode did not reach finalization/resume boundary:\n{result.stderr}")
-    if not args.output.is_file() or args.output.stat().st_size == 0:
-        raise RuntimeError("example did not publish a non-empty capture")
-    partials = list(args.output.parent.glob(args.output.name + ".*.partial"))
-    if partials:
-        raise RuntimeError(f"example left partial captures: {partials}")
+    for index, output in enumerate(outputs):
+        if not output.is_file() or output.stat().st_size == 0:
+            raise RuntimeError(f"example did not publish a non-empty capture: {output}")
+        partials = list(output.parent.glob(output.name + ".*.partial"))
+        if partials:
+            raise RuntimeError(f"example left partial captures: {partials}")
 
-    run([str(args.query), "check", str(args.output)])
-    records = run([
-        str(args.query), "query", "--kind", "cpu-zone,message", str(args.output)
-    ]).stdout
-    required = [
-        "direct.tracy-client.zone",
-        "direct.tracy-client.message",
-        "tracing-tracy.child",
-        "tracing-tracy.event",
-    ]
-    if args.mode == "unwind-panic":
-        required.append("rust unwind panic caught")
-    missing = [marker for marker in required if marker not in records]
-    if missing:
-        raise RuntimeError(f"capture is missing semantic markers {missing}:\n{records}")
+        run([str(args.query), "check", str(output)])
+        records = run([
+            str(args.query), "query", "--kind", "cpu-zone,message", str(output)
+        ]).stdout
+        required = [
+            "direct.tracy-client.zone",
+            "direct.tracy-client.message",
+            "tracing-tracy.child",
+            "tracing-tracy.event",
+        ]
+        if args.mode == "unwind-panic":
+            required.append("rust unwind panic caught")
+        if args.mode == "repeated" and index == 1:
+            required.append("rust.repeated.second-capture")
+        missing = [marker for marker in required if marker not in records]
+        if missing:
+            raise RuntimeError(f"capture is missing semantic markers {missing}:\n{records}")
 
-    run([str(args.query), "range", str(args.output)])
-    run([str(args.query), "info", str(args.output)])
+        run([str(args.query), "range", str(output)])
+        run([str(args.query), "info", str(output)])
     print(f"validated {args.mode} capture: {args.output}")
     return 0
 

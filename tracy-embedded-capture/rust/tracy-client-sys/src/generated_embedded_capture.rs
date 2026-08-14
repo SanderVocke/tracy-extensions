@@ -1,4 +1,4 @@
-pub const TRACY_EMBEDDED_CAPTURE_ABI_VERSION: u32 = 2;
+pub const TRACY_EMBEDDED_CAPTURE_ABI_VERSION: u32 = 3;
 pub const TRACY_EMBEDDED_CAPTURE_SAVE: i32 = 1;
 pub const TRACY_EMBEDDED_CAPTURE_DISCARD: i32 = 2;
 pub const TRACY_EMBEDDED_CAPTURE_OK: i32 = 0;
@@ -17,6 +17,7 @@ pub const TRACY_EMBEDDED_CAPTURE_FINISHING: i32 = 3;
 pub const TRACY_EMBEDDED_CAPTURE_FINISHED: i32 = 4;
 pub const TRACY_EMBEDDED_CAPTURE_FAILED: i32 = 5;
 pub const TRACY_EMBEDDED_CAPTURE_DISCARDED: i32 = 6;
+pub const TRACY_EMBEDDED_CAPTURE_IDLE: i32 = 7;
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone, Default)]
@@ -37,10 +38,20 @@ extern "C" {
         channel_capacity: usize,
         worker_memory_limit: i64,
     ) -> i32;
+    pub fn ___tracy_embedded_capture_start(
+        path: *const ::std::os::raw::c_char,
+        path_len: usize,
+        channel_capacity: usize,
+        worker_memory_limit: i64,
+    ) -> i32;
+    pub fn ___tracy_embedded_capture_stop_with_disposition(disposition: i32) -> i32;
+    pub fn ___tracy_embedded_capture_stop() -> i32;
+    pub fn ___tracy_embedded_capture_shutdown() -> i32;
     pub fn ___tracy_embedded_capture_finish_with_disposition(disposition: i32) -> i32;
     pub fn ___tracy_embedded_capture_finish() -> i32;
     pub fn ___tracy_embedded_capture_abi_version() -> u32;
     pub fn ___tracy_embedded_capture_get_state() -> i32;
+    pub fn ___tracy_embedded_capture_get_event_storage_bytes() -> i64;
     pub fn ___tracy_embedded_capture_get_statistics(
         statistics: *mut tracy_embedded_capture_statistics,
     ) -> i32;

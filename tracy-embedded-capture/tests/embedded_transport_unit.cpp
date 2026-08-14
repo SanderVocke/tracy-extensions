@@ -122,5 +122,29 @@ int main(int argc, char** argv) {
     CloseEndpoint(server);
     DestroyEndpoint(server);
     Cancel();
+
+    if (mode == "core") {
+        Reset();
+        if (!Configure(16)) return fail("second configure failed");
+        server = nullptr;
+        client = nullptr;
+        // The profiler-side listener survives between on-demand sessions.
+        if (!Connect(server) || !Accept(client)) return fail("second rendezvous failed");
+        constexpr char second[] = "second session";
+        if (Send(client, second, 14) != 14) return fail("second session send failed");
+        std::array<char, 14> secondBuffer{};
+        if (Read(server, secondBuffer.data(), 14, 1000) != 14 ||
+            std::memcmp(secondBuffer.data(), second, 14) != 0) {
+            return fail("second session contents failed");
+        }
+        const auto secondStatistics = GetStatistics();
+        if (secondStatistics.clientToServerBytes != 14) {
+            return fail("second session statistics were not reset");
+        }
+        DestroyEndpoint(client);
+        DestroyEndpoint(server);
+        Cancel();
+        Reset();
+    }
     return 0;
 }

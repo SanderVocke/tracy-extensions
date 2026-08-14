@@ -39,6 +39,25 @@ fn configure(path: &Path) -> Result<(), String> {
     }
 }
 
+fn start_reusable(path: &Path) -> Result<(), String> {
+    let path = path
+        .to_str()
+        .ok_or_else(|| "output path must be UTF-8".to_owned())?;
+    let status = unsafe {
+        tracy_client_sys::___tracy_embedded_capture_start(
+            path.as_ptr().cast(),
+            path.len(),
+            CAPACITY,
+            MEMORY_LIMIT,
+        )
+    };
+    if status == tracy_client_sys::TRACY_EMBEDDED_CAPTURE_OK {
+        Ok(())
+    } else {
+        Err(capture_error(status))
+    }
+}
+
 fn wait_until_capturing() -> Result<(), String> {
     let deadline = Instant::now() + Duration::from_secs(10);
     loop {
@@ -55,6 +74,29 @@ fn wait_until_capturing() -> Result<(), String> {
             ));
         }
         std::thread::sleep(Duration::from_millis(1));
+    }
+}
+
+fn stop_reusable() -> Result<(), String> {
+    let status = unsafe { tracy_client_sys::___tracy_embedded_capture_stop() };
+    if status != tracy_client_sys::TRACY_EMBEDDED_CAPTURE_OK {
+        return Err(capture_error(status));
+    }
+    let state = unsafe { tracy_client_sys::___tracy_embedded_capture_get_state() };
+    if state != tracy_client_sys::TRACY_EMBEDDED_CAPTURE_IDLE {
+        return Err(format!(
+            "embedded capture did not become idle; state={state}"
+        ));
+    }
+    Ok(())
+}
+
+fn shutdown_reusable() -> Result<(), String> {
+    let status = unsafe { tracy_client_sys::___tracy_embedded_capture_shutdown() };
+    if status == tracy_client_sys::TRACY_EMBEDDED_CAPTURE_OK {
+        Ok(())
+    } else {
+        Err(capture_error(status))
     }
 }
 
@@ -139,14 +181,21 @@ fn main() {
     let output = arguments.next().unwrap_or_default();
     if arguments.next().is_some()
         || output.is_empty()
-        || (mode != "normal" && mode != "unwind-panic")
+        || (mode != "normal" && mode != "unwind-panic" && mode != "repeated")
     {
-        eprintln!("usage: rust-embedded-capture-example <normal|unwind-panic> OUTPUT.tracy");
+        eprintln!(
+            "usage: rust-embedded-capture-example <normal|unwind-panic|repeated> OUTPUT.tracy"
+        );
         std::process::exit(2);
     }
 
     let output = Path::new(&output);
-    if let Err(error) = configure(output) {
+    let configured = if mode == "repeated" {
+        start_reusable(output)
+    } else {
+        configure(output)
+    };
+    if let Err(error) = configured {
         eprintln!("{error}");
         std::process::exit(3);
     }
@@ -163,6 +212,46 @@ fn main() {
             std::process::exit(5);
         }
         eprintln!("embedded capture published: {}", output.display());
+        return;
+    }
+
+    if mode == "repeated" {
+        let first_memory =
+            unsafe { tracy_client_sys::___tracy_embedded_capture_get_event_storage_bytes() };
+        if first_memory <= 0 {
+            eprintln!("event storage usage was not reported for first capture");
+            std::process::exit(7);
+        }
+        run_scoped(&client, false);
+        if let Err(error) = stop_reusable() {
+            eprintln!("{error}");
+            std::process::exit(8);
+        }
+
+        let mut second = output.as_os_str().to_owned();
+        second.push(".second.tracy");
+        let second = Path::new(&second);
+        if let Err(error) = start_reusable(second).and_then(|()| wait_until_capturing()) {
+            eprintln!("{error}");
+            std::process::exit(9);
+        }
+        let second_memory =
+            unsafe { tracy_client_sys::___tracy_embedded_capture_get_event_storage_bytes() };
+        if second_memory <= 0 {
+            eprintln!("event storage usage was not reported for second capture");
+            std::process::exit(10);
+        }
+        client.message("rust.repeated.second-capture", 0);
+        run_scoped(&client, false);
+        if let Err(error) = stop_reusable().and_then(|()| shutdown_reusable()) {
+            eprintln!("{error}");
+            std::process::exit(11);
+        }
+        eprintln!(
+            "repeated embedded captures published: {} and {}",
+            output.display(),
+            second.display()
+        );
         return;
     }
 

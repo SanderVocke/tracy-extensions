@@ -6,7 +6,7 @@ Activation requires all of `NEXTEST_ATTEMPT_ID`, `NEXTEST_TEST_NAME`, `NEXTEST_B
 
 ## Component dependencies
 
-- The embedded component supplies ABI v2, bounded protocol transport, and save/discard finalization.
+- The embedded component supplies ABI v3, bounded protocol transport, and save/discard finalization.
 - The query component validates every saved trace with `check`, `range`, `info`, and exact semantic queries.
 - No network port, helper process, JUnit reconciliation, or post-exit decision is involved.
 

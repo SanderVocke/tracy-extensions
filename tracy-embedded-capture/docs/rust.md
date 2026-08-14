@@ -24,6 +24,8 @@ add another native feature when consuming a prebuilt bundle.
 
 ## CMake-free prebuilt workflow
 
+ABI v3 consumers require a 0.6.0 bundle whose manifest contains
+`embedded_capture_abi=3`. Older ABI v2 bundles are intentionally rejected.
 Select the asset by the exact Rust target triple, not only by the host name:
 
 | Rust target | Asset |
@@ -38,7 +40,7 @@ Select the asset by the exact Rust target triple, not only by the host name:
 Linux x86-64, from a clean consumer checkout:
 
 ```sh
-version=0.5.0
+version=0.6.0
 asset=tracy-embedded-native-linux-x86_64.tar.gz
 base=https://github.com/SanderVocke/tracy-extensions/releases/download/v${version}
 mkdir -p .tracy-native/download .tracy-native/extracted
@@ -56,7 +58,7 @@ On macOS use the corresponding asset and `shasum -a 256 -c` for the filtered
 checksum line. PowerShell on Windows:
 
 ```powershell
-$Version = "0.5.0"
+$Version = "0.6.0"
 $Asset = "tracy-embedded-native-windows-x86_64.zip"
 $Base = "https://github.com/SanderVocke/tracy-extensions/releases/download/v$Version"
 New-Item -ItemType Directory -Force .tracy-native\download,.tracy-native\extracted | Out-Null
@@ -106,9 +108,29 @@ under Cargo's `OUT_DIR`. These modes support non-canonical native feature sets.
 An explicitly supplied invalid prepared tree remains a linker error and is not
 interpreted as a normalized release bundle.
 
-Configure the C ABI before `tracy_client::Client::start()`, wait for capturing
-state, emit instrumentation, drop dispatchers/zones and join producers, then
-call the disposition-aware finalizer. `___tracy_embedded_capture_finish()`
-remains save-compatible. The nextest component provides a tested wrapper around
-this ordering. Provenance and license details are adjacent to the sys patch and
-inside each binary bundle.
+For the legacy one-shot path, configure the C ABI before
+`tracy_client::Client::start()`, wait for capturing state, emit instrumentation,
+drop dispatchers/zones and join producers, then call the disposition-aware
+finalizer. `___tracy_embedded_capture_finish()` remains save-compatible.
+
+For multiple files in one process, use this ordering:
+
+```text
+___tracy_embedded_capture_start(first path)
+tracy_client::Client::start()                 # once only
+wait for TRACY_EMBEDDED_CAPTURE_CAPTURING
+emit; quiesce producers; drop active guards
+___tracy_embedded_capture_stop()              # state becomes IDLE
+___tracy_embedded_capture_start(second path)
+wait; emit; quiesce; stop
+___tracy_embedded_capture_shutdown()          # once, after joining producers
+```
+
+Keep the same high-level `Client` alive across cycles; do not call
+`Client::start()` again. `___tracy_embedded_capture_get_event_storage_bytes()`
+returns Tracy's approximate process-global server event-storage allocation and
+normally returns to zero after a successful stop destroys the sole Worker. The
+backend has no concurrent multi-Worker mode.
+
+The nextest component uses the tested one-shot ordering. Provenance and license
+details are adjacent to the sys patch and inside each binary bundle.

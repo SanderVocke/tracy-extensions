@@ -29,7 +29,11 @@ block for capacity and never silently discard bytes. Reads preserve byte order,
 support Tracy's timeout behavior, and distinguish timeout from peer closure.
 Closing an endpoint wakes all blocked readers and writers. Channel capacity and
 transferred-byte/high-water counters are available through the capture status
-API.
+API. `___tracy_embedded_capture_get_event_storage_bytes()` exposes Tracy's
+existing process-global `memUsage` atomic. It closely tracks allocations made
+by server-side slabs and vectors that hold the event model, but excludes the
+bounded transport buffers, client profiler, allocator overhead, and unrelated
+process memory.
 
 Embedded `ListenSocket::Listen` and `Socket::Connect` only rendezvous in memory;
 they perform no operating-system networking operation. UDP broadcast is disabled
@@ -37,46 +41,51 @@ in embedded builds.
 
 ## Process lifecycle
 
-Only one capture lifecycle is supported per process:
+The backend is process-global and supports at most one active Worker. It offers
+a legacy one-shot lifecycle and a reusable sequential lifecycle:
 
 ```text
-unconfigured -> configured -> starting -> capturing -> finishing -> finished
-                         \-> failed        \-----------> failed
+unconfigured -> configured -> capturing -> finishing -> idle
+                    ^                                  |
+                    +------------- start --------------+
+idle -> finishing -> finished  (final profiler shutdown)
 ```
 
-1. `___tracy_embedded_capture_configure()` copies the output path, configures
-   the bounded channel, and starts an endpoint-backed Worker.
-2. `tracy_client::Client::start()` calls Tracy's existing manual-lifetime startup
-   ABI. Its serializer thread rendezvous with the Worker in memory.
+1. `___tracy_embedded_capture_start()` copies the next output path, configures a
+   fresh bounded channel, and starts one endpoint-backed Worker.
+2. After the first start only, `tracy_client::Client::start()` starts Tracy's
+   manual-lifetime profiler. Keep that client running across capture cycles.
 3. Application threads emit through ordinary Tracy APIs.
-4. The owner quiesces every thread that can invoke Tracy and drops all active
-   Tracy and `tracing` span guards.
-5. `___tracy_embedded_capture_finish()` requests Tracy's normal manual shutdown.
-   The client drains committed producer/serial queues and sends termination;
-   Worker metadata queries and termination complete before both sides join.
-6. The caller chooses a disposition. Save writes a same-directory partial
-   capture, closes compression, and atomically renames a non-empty file. Discard
-   destroys the drained Worker model without opening any output file.
+4. The owner quiesces Tracy calls and drops active Tracy/tracing guards.
+5. `___tracy_embedded_capture_stop_with_disposition()` requests Tracy's normal
+   on-demand disconnect. The client drains committed producer/serial queues,
+   completes Worker metadata queries, and remains alive in `IDLE` for the next
+   session.
+6. Save writes a same-directory partial capture and publishes it atomically;
+   discard destroys the drained model without opening an output file.
+7. Repeat from step 1, then call `___tracy_embedded_capture_shutdown()` once
+   after the last stop and after joining every instrumentation producer.
 
-`___tracy_embedded_capture_finish()` remains the save shorthand;
-`___tracy_embedded_capture_finish_with_disposition()` selects save or discard.
-Configure and finalization are one-shot operations. Restarting Tracy or creating a
-second capture in one process is unsupported. The output path must not already
-exist. No C++ exception crosses the C ABI. The ABI validates UTF-8; on Windows,
-Tracy 0.13.1's narrow `fopen` writer additionally requires the path to be
-representable by the active process locale. Arbitrary non-UTF-8 POSIX byte paths
-and unrepresentable Windows Unicode paths are unsupported.
+The legacy `configure` plus `finish[_with_disposition]` path still performs one
+full manual shutdown and remains source-compatible. Do not mix the one-shot and
+reusable families. `stop()` and `finish()` are save shorthands. The output path
+must not already exist. No C++ exception crosses the C ABI. The ABI validates
+UTF-8; on Windows, Tracy 0.13.1's narrow `fopen` writer additionally requires the
+path to be representable by the active process locale. Arbitrary non-UTF-8 POSIX
+byte paths and unrepresentable Windows Unicode paths are unsupported.
 
 ## Thread-safety contract
 
-Configuration and finalization must run on the same controlling thread that
-starts the manual-lifetime Tracy client. Before finalization, callers must ensure
+Lifecycle calls must run on the same controlling thread that starts the
+manual-lifetime Tracy client. Before every stop or finish, callers must ensure
 that:
 
 - no other thread can invoke Tracy instrumentation;
-- all application worker threads have been joined;
 - all Tracy zones and `tracing` dispatcher/span guards have been dropped; and
 - no allocator integration can emit concurrently.
+
+Producer threads may remain alive but blocked between reusable stops. They must
+all be joined before the one-shot finish or final reusable shutdown.
 
 The coordinator never holds its state lock while joining Tracy threads or while
 calling `Worker::Write`.

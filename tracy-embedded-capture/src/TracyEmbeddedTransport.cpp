@@ -50,6 +50,7 @@ struct Endpoint {
 
 std::mutex gMutex;
 std::shared_ptr<Session> gSession;
+bool gListening = false;
 std::string gError;
 
 Pipe& outgoing(Endpoint& endpoint) {
@@ -147,6 +148,7 @@ bool Configure(std::size_t capacity) {
     }
     try {
         gSession = std::make_shared<Session>(capacity);
+        gSession->listening = gListening;
         gError.clear();
         return true;
     } catch (...) {
@@ -165,8 +167,9 @@ bool Listen() {
         setError("embedded transport is not configured");
         return false;
     }
-    std::lock_guard lock(session->rendezvousMutex);
-    if (session->cancelled || session->listening) return false;
+    std::scoped_lock lock(gMutex, session->rendezvousMutex);
+    if (gListening || session != gSession || session->cancelled) return false;
+    gListening = true;
     session->listening = true;
     return true;
 }
@@ -263,6 +266,12 @@ void Cancel() {
     }
     cancelPipe(session->clientToServer);
     cancelPipe(session->serverToClient);
+}
+
+void Reset() {
+    std::lock_guard lock(gMutex);
+    gSession.reset();
+    gError.clear();
 }
 
 Statistics GetStatistics() {

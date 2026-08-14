@@ -1,5 +1,11 @@
 # Tracy profiler clients in Rust
 
+This repository's package-compatible fork adds the `embedded-capture` feature
+and raw ABI v3 bindings for process-global capture state, approximate server
+event-storage bytes, one-shot capture, and reusable sequential start/stop/save
+cycles. It supports one active embedded Worker, not concurrent Workers. See
+[`../../docs/rust.md`](../../docs/rust.md) for lifecycle ordering.
+
 This project contains Rust crates for producing [Tracy profiler](https://github.com/wolfpld/tracy)
 traces. Tracy features nanosecond precision, ability to profile remotely and a full-featured
 graphical interface for finding hot spots in profiled programs.

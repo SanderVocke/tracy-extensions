@@ -33,7 +33,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$RELEASE_TAG" = v0.5.0
+          test "$RELEASE_TAG" = v0.6.0
           tag_sha=$(git rev-parse HEAD)
           test "$(git rev-list -n1 "$RELEASE_TAG")" = "$tag_sha"
           run_json=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}")
@@ -67,15 +67,15 @@ jobs:
           RELEASE_TAG: ${{ inputs.tag }}
         shell: bash
         run: |
-          test "$RELEASE_TAG" = "v0.5.0"
+          test "$RELEASE_TAG" = "v0.6.0"
           cat > release-notes.md <<'EOF'
-          `tracy-extensions` 0.5.0 provides `tracy-query` and relocatable embedded-capture native libraries for Tracy Profiler 0.13.1/protocol 76.
+          `tracy-extensions` 0.6.0 adds embedded-capture ABI v3 for Tracy Profiler 0.13.1/protocol 76: capture state and event-storage memory queries, plus reusable sequential start/stop/save cycles in one process.
 
-          Six query executables and six `tracy-embedded-native` bundles cover Linux, macOS, and Windows on x86-64 and ARM64. Native bundles use profile `embedded-capture-v1`; Windows query executables retain the static MSVC runtime while Windows native libraries use the dynamic MSVC CRT required by ordinary Rust MSVC targets.
+          Six query executables and six ABI v3 `tracy-embedded-native` bundles cover Linux, macOS, and Windows on x86-64 and ARM64. Native bundles use profile `embedded-capture-v1`; Windows query executables retain the static MSVC runtime while Windows native libraries use the dynamic MSVC CRT required by ordinary Rust MSVC targets.
 
-          Verify downloads with `SHA256SUMS`. See `README.md` and `tracy-embedded-capture/docs/rust.md` for the CMake-free Rust workflow and compatibility limits.
+          Verify downloads with `SHA256SUMS`. See `README.md` and `tracy-embedded-capture/docs/rust.md` for lifecycle ordering, the CMake-free Rust workflow, and compatibility limits.
           EOF
           gh release create "$RELEASE_TAG" release/tracy-* release/SHA256SUMS \
             --verify-tag \
-            --title "tracy-extensions 0.5.0" \
+            --title "tracy-extensions 0.6.0" \
             --notes-file release-notes.md
