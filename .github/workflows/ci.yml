@@ -181,18 +181,8 @@ jobs:
               for archive in "$bundle_dir"/lib/*.a; do lipo -archs "$archive" | grep -w "$arch"; done
               ;;
             windows-*)
-              if [[ "${{ matrix.platform }}" = *x86_64 ]]; then machine=x64; else machine=ARM64; fi
-              vswhere='/c/Program Files (x86)/Microsoft Visual Studio/Installer/vswhere.exe'
-              vsroot=$("$vswhere" -latest -property installationPath | tr -d '\r')
-              vsroot=$(cygpath -u "$vsroot")
-              dumpbin=$(find "$vsroot/VC/Tools/MSVC" -path '*/bin/Hostx64/x64/dumpbin.exe' | sort -V | tail -1)
-              test -x "$dumpbin"
-              all_directives=''
-              for archive in "$bundle_dir"/lib/*.lib; do
-                "$dumpbin" /headers "$archive" | grep -i "$machine"
-                all_directives+=$("$dumpbin" /directives "$archive")
-              done
-              python3 -c 'import re,sys; libraries=[v.lower() for pair in re.findall(r"DEFAULTLIB:(?:\"([^\"]+)\"|(\\S+))", sys.argv[1]) for v in pair if v]; forbidden=[v for v in libraries if v in {"libcmt","libcmtd","libcmt.lib","libcmtd.lib"}]; print(f"audited dynamic MSVC CRT directives: {libraries}"); sys.exit(f"static CRT contamination: {forbidden}" if forbidden else 0)' "$all_directives"
+              if [[ "${{ matrix.platform }}" = *x86_64 ]]; then architecture=x86_64; else architecture=aarch64; fi
+              python3 cmake/VerifyMsvcArchive.py "$architecture" "$bundle_dir"/lib/*.lib
               ;;
           esac
 
