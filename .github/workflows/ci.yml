@@ -162,7 +162,12 @@ jobs:
           set -euo pipefail
           cmake --build package-build --config Release \
             --target tracy-embedded-native-package --parallel 2
-          bundle_dir="$PWD/package-build/tracy-embedded-native-package/tracy-embedded-native"
+          archive=$(find "$PWD/package-build/dist" -maxdepth 1 -type f -name 'tracy-embedded-native-${{ matrix.platform }}.*')
+          test -s "$archive"
+          extracted="$PWD/../tracy-embedded-package-${{ matrix.platform }}"
+          rm -rf "$extracted" && mkdir -p "$extracted"
+          (cd "$extracted" && cmake -E tar xf "$archive")
+          bundle_dir="$extracted/tracy-embedded-native"
           cmake -DBUNDLE_DIR="$bundle_dir" \
             -DEXPECTED_TARGET=${{ matrix.target_triple }} \
             -P cmake/VerifyTracyEmbeddedNative.cmake
@@ -190,7 +195,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          bundle_dir="$PWD/package-build/tracy-embedded-native-package/tracy-embedded-native"
+          bundle_dir="$PWD/../tracy-embedded-package-${{ matrix.platform }}/tracy-embedded-native"
           cmake -S tracy-embedded-capture/tests/package-consumer -B package-consumer-build \
             -DCMAKE_BUILD_TYPE=Release \
             -DTRACY_EMBEDDED_NATIVE_DIR="$bundle_dir" \
@@ -208,14 +213,19 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          bundle_dir="$PWD/package-build/tracy-embedded-native-package/tracy-embedded-native"
+          bundle_dir="$PWD/../tracy-embedded-package-${{ matrix.platform }}/tracy-embedded-native"
           query="$PWD/stage/bin/tracy-query${{ matrix.suffix }}"
-          rm -rf prebuilt-consumer-target
+          consumer="$PWD/../tracy-rust-consumer-${{ matrix.platform }}"
+          rm -rf "$consumer" prebuilt-consumer-target
+          mkdir -p "$consumer/tracy-embedded-capture/examples" "$consumer/tracy-embedded-capture/rust"
+          cp -R tracy-embedded-capture/examples/rust-embedded-capture "$consumer/tracy-embedded-capture/examples/"
+          cp -R tracy-embedded-capture/rust/tracy-client-sys "$consumer/tracy-embedded-capture/rust/"
+          manifest="$consumer/tracy-embedded-capture/examples/rust-embedded-capture/Cargo.toml"
           python3 tracy-embedded-capture/examples/rust-embedded-capture/run_demo.py \
-            --mode normal --output "$PWD/prebuilt-normal.tracy" --query "$query" \
+            --mode normal --output "$PWD/prebuilt-normal.tracy" --query "$query" --manifest "$manifest" \
             --target-dir "$PWD/prebuilt-consumer-target" --prebuilt-dir "$bundle_dir"
           python3 tracy-embedded-capture/examples/rust-embedded-capture/run_demo.py \
-            --mode unwind-panic --output "$PWD/prebuilt-panic.tracy" --query "$query" \
+            --mode unwind-panic --output "$PWD/prebuilt-panic.tracy" --query "$query" --manifest "$manifest" \
             --target-dir "$PWD/prebuilt-consumer-target" --prebuilt-dir "$bundle_dir" --release
 
       - name: Exercise explicit prebuilt rejection diagnostics
@@ -223,7 +233,7 @@ jobs:
         shell: bash
         run: |
           python3 tracy-embedded-capture/tests/test_prebuilt_rejections.py \
-            --bundle "$PWD/package-build/tracy-embedded-native-package/tracy-embedded-native" \
+            --bundle "$PWD/../tracy-embedded-package-${{ matrix.platform }}/tracy-embedded-native" \
             --example-manifest tracy-embedded-capture/examples/rust-embedded-capture/Cargo.toml \
             --sys-manifest tracy-embedded-capture/rust/tracy-client-sys/Cargo.toml \
             --target-dir "$PWD/prebuilt-rejection-target"
@@ -233,7 +243,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          bundle_dir="$PWD/package-build/tracy-embedded-native-package/tracy-embedded-native"
+          bundle_dir="$PWD/../tracy-embedded-package-${{ matrix.platform }}/tracy-embedded-native"
           set +e
           output=$(TRACY_CLIENT_SYS_PREBUILT_DIR="$bundle_dir" \
             CMAKE=cmake-must-not-run-in-prebuilt-mode \
