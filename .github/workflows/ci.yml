@@ -192,10 +192,7 @@ jobs:
                 "$dumpbin" /headers "$archive" | grep -i "$machine"
                 all_directives+=$("$dumpbin" /directives "$archive")
               done
-              if grep -Eqi "DEFAULTLIB:[\"']?LIBCMT(D)?([\"']|[[:space:]]|$)" <<<"$all_directives"; then
-                echo "static CRT contamination in Windows native bundle: $all_directives" >&2
-                exit 1
-              fi
+              python3 -c 'import re,sys; libraries=[v.lower() for pair in re.findall(r"DEFAULTLIB:(?:\"([^\"]+)\"|(\\S+))", sys.argv[1]) for v in pair if v]; forbidden=[v for v in libraries if v in {"libcmt","libcmtd","libcmt.lib","libcmtd.lib"}]; print(f"audited dynamic MSVC CRT directives: {libraries}"); sys.exit(f"static CRT contamination: {forbidden}" if forbidden else 0)' "$all_directives"
               ;;
           esac
 
