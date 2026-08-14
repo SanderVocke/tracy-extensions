@@ -21,6 +21,7 @@
 
 #include "TracyEmbeddedTransport.hpp"
 #include "TracyFileWrite.hpp"
+#include "TracyMemory.hpp"
 #include "TracyProtocol.hpp"
 #include "TracyVersion.hpp"
 #include "TracyWorker.hpp"
@@ -42,6 +43,9 @@ struct Coordinator {
     std::filesystem::path output;
     std::unique_ptr<tracy::Worker> worker;
     std::string error;
+    bool reusable = false;
+    bool hasTransportSnapshot = false;
+    tracy::embedded::Statistics transportSnapshot;
     std::uint64_t writerOpenCount = 0;
     std::uint64_t workerWriteCount = 0;
     std::uint64_t publishCount = 0;
@@ -115,7 +119,7 @@ void atomicPublish(const std::filesystem::path& partial,
 #endif
 }
 
-int32_t finishImpl(const int32_t disposition) {
+int32_t finishImpl(const int32_t disposition, const bool reusableStop) {
     auto& value = coordinator();
     tracy::Worker* worker = nullptr;
     std::filesystem::path output;
@@ -126,9 +130,12 @@ int32_t finishImpl(const int32_t disposition) {
             value.error = "embedded capture disposition is invalid";
             return TRACY_EMBEDDED_CAPTURE_INVALID_ARGUMENT;
         }
-        if (value.state != TRACY_EMBEDDED_CAPTURE_CONFIGURED &&
-            value.state != TRACY_EMBEDDED_CAPTURE_CAPTURING) {
-            value.error = "embedded capture finish called in an invalid state";
+        if ((value.state != TRACY_EMBEDDED_CAPTURE_CONFIGURED &&
+             value.state != TRACY_EMBEDDED_CAPTURE_CAPTURING) ||
+            value.reusable != reusableStop) {
+            value.error = reusableStop
+                              ? "reusable embedded capture stop called in an invalid state"
+                              : "embedded capture finish called in an invalid state";
             return TRACY_EMBEDDED_CAPTURE_INVALID_STATE;
         }
         value.state = TRACY_EMBEDDED_CAPTURE_FINISHING;
@@ -144,9 +151,14 @@ int32_t finishImpl(const int32_t disposition) {
     }
 
     // The caller guarantees that all instrumentation producers and guards are
-    // quiescent. Tracy's manual shutdown drains its queues and completes the
-    // protocol termination exchange before destroying the client profiler.
-    ___tracy_shutdown_profiler();
+    // quiescent. The one-shot lifecycle drains by shutting the client down.
+    // Reusable captures instead use Tracy's on-demand disconnect handshake,
+    // preserving the profiler and its thread-local producer tokens.
+    if (reusableStop) {
+        worker->RequestEmbeddedDisconnect();
+    } else {
+        ___tracy_shutdown_profiler();
+    }
 
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(30);
     while (worker->IsConnected() && std::chrono::steady_clock::now() < deadline) {
@@ -166,15 +178,23 @@ int32_t finishImpl(const int32_t disposition) {
         return TRACY_EMBEDDED_CAPTURE_TRANSPORT_ERROR;
     }
 
+    {
+        std::lock_guard lock(value.mutex);
+        value.transportSnapshot = tracy::embedded::GetStatistics();
+        value.hasTransportSnapshot = true;
+    }
+
     if (disposition == TRACY_EMBEDDED_CAPTURE_DISCARD) {
         std::unique_ptr<tracy::Worker> discardedWorker;
         {
             std::lock_guard lock(value.mutex);
-            value.state = TRACY_EMBEDDED_CAPTURE_DISCARDED;
+            value.state = reusableStop ? TRACY_EMBEDDED_CAPTURE_IDLE
+                                       : TRACY_EMBEDDED_CAPTURE_DISCARDED;
             value.error.clear();
             discardedWorker = std::move(value.worker);
         }
         discardedWorker.reset();
+        if (reusableStop) tracy::embedded::Reset();
         return TRACY_EMBEDDED_CAPTURE_OK;
     }
 
@@ -232,13 +252,15 @@ int32_t finishImpl(const int32_t disposition) {
     std::unique_ptr<tracy::Worker> completedWorker;
     {
         std::lock_guard lock(value.mutex);
-        value.state = TRACY_EMBEDDED_CAPTURE_FINISHED;
+        value.state = reusableStop ? TRACY_EMBEDDED_CAPTURE_IDLE
+                                   : TRACY_EMBEDDED_CAPTURE_FINISHED;
         value.error.clear();
         completedWorker = std::move(value.worker);
     }
     // Do not hold the coordinator mutex while Tracy joins any remaining
     // background work in the Worker destructor.
     completedWorker.reset();
+    if (reusableStop) tracy::embedded::Reset();
     return TRACY_EMBEDDED_CAPTURE_OK;
 }
 
@@ -246,9 +268,9 @@ int32_t finishImpl(const int32_t disposition) {
 
 extern "C" {
 
-int32_t ___tracy_embedded_capture_configure(const char* path, size_t pathLength,
-                                             size_t channelCapacity,
-                                             int64_t workerMemoryLimit) {
+static int32_t configureImpl(const char* path, size_t pathLength,
+                             size_t channelCapacity, int64_t workerMemoryLimit,
+                             const bool reusable) {
     auto& value = coordinator();
     try {
         if (!path || pathLength == 0 || pathLength > 32767 ||
@@ -259,8 +281,14 @@ int32_t ___tracy_embedded_capture_configure(const char* path, size_t pathLength,
             return TRACY_EMBEDDED_CAPTURE_INVALID_ARGUMENT;
         }
         std::lock_guard lock(value.mutex);
-        if (value.state != TRACY_EMBEDDED_CAPTURE_UNCONFIGURED) {
-            value.error = "embedded capture is already configured";
+        const bool initial = value.state == TRACY_EMBEDDED_CAPTURE_UNCONFIGURED;
+        const bool restarting = reusable && value.state == TRACY_EMBEDDED_CAPTURE_IDLE;
+        if ((!initial && !restarting) || (!reusable && !initial) ||
+            (restarting && ___tracy_profiler_started() == 0) ||
+            (reusable && initial && ___tracy_profiler_started() != 0)) {
+            value.error = reusable
+                              ? "reusable embedded capture start called in an invalid state"
+                              : "embedded capture is already configured";
             return TRACY_EMBEDDED_CAPTURE_INVALID_STATE;
         }
 #ifdef _WIN32
@@ -280,6 +308,12 @@ int32_t ___tracy_embedded_capture_configure(const char* path, size_t pathLength,
         }
         value.worker = std::make_unique<tracy::Worker>("embedded", 0,
                                                        workerMemoryLimit);
+        value.reusable = reusable;
+        value.hasTransportSnapshot = false;
+        value.transportSnapshot = {};
+        value.writerOpenCount = 0;
+        value.workerWriteCount = 0;
+        value.publishCount = 0;
         value.error.clear();
         value.state = TRACY_EMBEDDED_CAPTURE_CONFIGURED;
         return TRACY_EMBEDDED_CAPTURE_OK;
@@ -292,9 +326,21 @@ int32_t ___tracy_embedded_capture_configure(const char* path, size_t pathLength,
     }
 }
 
+int32_t ___tracy_embedded_capture_configure(const char* path, size_t pathLength,
+                                             size_t channelCapacity,
+                                             int64_t workerMemoryLimit) {
+    return configureImpl(path, pathLength, channelCapacity, workerMemoryLimit, false);
+}
+
+int32_t ___tracy_embedded_capture_start(const char* path, size_t pathLength,
+                                         size_t channelCapacity,
+                                         int64_t workerMemoryLimit) {
+    return configureImpl(path, pathLength, channelCapacity, workerMemoryLimit, true);
+}
+
 int32_t ___tracy_embedded_capture_finish_with_disposition(int32_t disposition) {
     try {
-        return finishImpl(disposition);
+        return finishImpl(disposition, false);
     } catch (const std::exception& exception) {
         setFailure(coordinator(), exception.what());
         tracy::embedded::Cancel();
@@ -308,6 +354,52 @@ int32_t ___tracy_embedded_capture_finish_with_disposition(int32_t disposition) {
 
 int32_t ___tracy_embedded_capture_finish(void) {
     return ___tracy_embedded_capture_finish_with_disposition(TRACY_EMBEDDED_CAPTURE_SAVE);
+}
+
+int32_t ___tracy_embedded_capture_stop_with_disposition(int32_t disposition) {
+    try {
+        return finishImpl(disposition, true);
+    } catch (const std::exception& exception) {
+        setFailure(coordinator(), exception.what());
+        tracy::embedded::Cancel();
+        return TRACY_EMBEDDED_CAPTURE_INTERNAL_ERROR;
+    } catch (...) {
+        setFailure(coordinator(), "unknown reusable capture stop failure");
+        tracy::embedded::Cancel();
+        return TRACY_EMBEDDED_CAPTURE_INTERNAL_ERROR;
+    }
+}
+
+int32_t ___tracy_embedded_capture_stop(void) {
+    return ___tracy_embedded_capture_stop_with_disposition(TRACY_EMBEDDED_CAPTURE_SAVE);
+}
+
+int32_t ___tracy_embedded_capture_shutdown(void) {
+    auto& value = coordinator();
+    {
+        std::lock_guard lock(value.mutex);
+        if (value.state != TRACY_EMBEDDED_CAPTURE_IDLE || !value.reusable ||
+            ___tracy_profiler_started() == 0) {
+            value.error = "reusable embedded capture shutdown called in an invalid state";
+            return TRACY_EMBEDDED_CAPTURE_INVALID_STATE;
+        }
+        value.state = TRACY_EMBEDDED_CAPTURE_FINISHING;
+    }
+    try {
+        ___tracy_shutdown_profiler();
+        tracy::embedded::Reset();
+        std::lock_guard lock(value.mutex);
+        value.reusable = false;
+        value.state = TRACY_EMBEDDED_CAPTURE_FINISHED;
+        value.error.clear();
+        return TRACY_EMBEDDED_CAPTURE_OK;
+    } catch (const std::exception& exception) {
+        setFailure(value, exception.what());
+        return TRACY_EMBEDDED_CAPTURE_INTERNAL_ERROR;
+    } catch (...) {
+        setFailure(value, "unknown reusable profiler shutdown failure");
+        return TRACY_EMBEDDED_CAPTURE_INTERNAL_ERROR;
+    }
 }
 
 uint32_t ___tracy_embedded_capture_abi_version(void) {
@@ -324,16 +416,22 @@ int32_t ___tracy_embedded_capture_get_state(void) {
     return value.state;
 }
 
+int64_t ___tracy_embedded_capture_get_event_storage_bytes(void) {
+    return tracy::memUsage.load(std::memory_order_relaxed);
+}
+
 int32_t ___tracy_embedded_capture_get_statistics(
     tracy_embedded_capture_statistics* statistics) {
     if (!statistics) return TRACY_EMBEDDED_CAPTURE_INVALID_ARGUMENT;
-    const auto source = tracy::embedded::GetStatistics();
+    auto& value = coordinator();
+    std::lock_guard lock(value.mutex);
+    const auto source = value.hasTransportSnapshot
+                            ? value.transportSnapshot
+                            : tracy::embedded::GetStatistics();
     statistics->client_to_server_bytes = source.clientToServerBytes;
     statistics->server_to_client_bytes = source.serverToClientBytes;
     statistics->client_to_server_high_water = source.clientToServerHighWater;
     statistics->server_to_client_high_water = source.serverToClientHighWater;
-    auto& value = coordinator();
-    std::lock_guard lock(value.mutex);
     statistics->writer_open_count = value.writerOpenCount;
     statistics->worker_write_count = value.workerWriteCount;
     statistics->publish_count = value.publishCount;

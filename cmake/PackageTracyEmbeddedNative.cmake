@@ -12,8 +12,8 @@ foreach(_required IN ITEMS
         message(FATAL_ERROR "Package input ${_required} is required")
     endif()
 endforeach()
-if(NOT PROJECT_VERSION STREQUAL "0.5.0")
-    message(FATAL_ERROR "Embedded-native bundles must report tracy-extensions 0.5.0")
+if(NOT PROJECT_VERSION STREQUAL "0.6.0")
+    message(FATAL_ERROR "Embedded-native bundles must report tracy-extensions 0.6.0")
 endif()
 execute_process(
     COMMAND git rev-parse HEAD
@@ -89,6 +89,7 @@ file(WRITE "${_root}/licenses/PROVENANCE.txt"
 "source_commit=${SOURCE_COMMIT}\n"
 "tracy_version=0.13.1\n"
 "tracy_protocol=76\n"
+"embedded_capture_abi=3\n"
 "tracy_commit=05cceee0df3b8d7c6fa87e9638af311dbabc63cb\n"
 "capstone_commit=fad9f80564501f083adc92db3ef37f999af28dd0\n"
 "zstd_commit=f8745da6ff1ad1e7bab384bd1f9d742439278e99\n"
@@ -145,6 +146,7 @@ string(CONCAT _manifest
 "tracy_extensions_version=${PROJECT_VERSION}\n"
 "tracy_version=0.13.1\n"
 "tracy_protocol=76\n"
+"embedded_capture_abi=3\n"
 "target_triple=${TARGET_TRIPLE}\n"
 "architecture=${ARCHITECTURE}\n"
 "platform=${PLATFORM}\n"

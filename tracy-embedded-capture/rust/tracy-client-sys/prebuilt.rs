@@ -119,9 +119,10 @@ pub fn validate(
     let values = parse_manifest(&text)?;
 
     require(&values, "bundle_format_version", Some("1"))?;
-    require(&values, "tracy_extensions_version", Some("0.5.0"))?;
+    require(&values, "tracy_extensions_version", Some("0.6.0"))?;
     require(&values, "tracy_version", Some("0.13.1"))?;
     require(&values, "tracy_protocol", Some("76"))?;
+    require(&values, "embedded_capture_abi", Some("3"))?;
     require(&values, "target_triple", Some(target))?;
     let expected_arch = match target_arch {
         "x86_64" => "x86_64",
@@ -259,11 +260,11 @@ pub fn validate(
             ));
         }
     }
-    if values.len() != 19 + expected.len() {
+    if values.len() != 20 + expected.len() {
         return Err(format!(
             "manifest has unexpected fields: found {}, expected {}",
             values.len(),
-            19 + expected.len()
+            20 + expected.len()
         ));
     }
 

@@ -56,6 +56,38 @@ file(WRITE "${_tracy_client_source}" "${_tracy_client_contents}")
 unset(_tracy_client_contents)
 unset(_tracy_client_source)
 
+# Tracy's normal on-demand disconnect handler sends its termination marker
+# before draining producer queues. The embedded stop API promises a quiescent
+# boundary, so drain the already-committed queues before that marker to prevent
+# the capture Worker from observing an empty termination and closing early.
+set(_tracy_profiler_source "${tracy_0131_SOURCE_DIR}/public/client/TracyProfiler.cpp")
+file(READ "${_tracy_profiler_source}" _tracy_profiler_contents)
+if(NOT _tracy_profiler_contents MATCHES "TRACY_EMBEDDED_CAPTURE_DISCONNECT_DRAIN")
+    string(REPLACE
+        "#endif\n\n    QueueItem terminate;"
+        "#endif\n\n#ifdef TRACY_EMBEDDED_CAPTURE\n    // TRACY_EMBEDDED_CAPTURE_DISCONNECT_DRAIN\n    for(;;)\n    {\n        const auto status = Dequeue( token );\n        const auto serialStatus = DequeueSerial();\n        if( status == DequeueStatus::ConnectionLost || serialStatus == DequeueStatus::ConnectionLost ) return;\n        while( m_sock->HasData() )\n        {\n            if( !HandleServerQuery() ) return;\n        }\n        if( status == DequeueStatus::QueueEmpty && serialStatus == DequeueStatus::QueueEmpty )\n        {\n            if( m_bufferOffset != m_bufferStart && !CommitData() ) return;\n            break;\n        }\n    }\n#endif\n\n    QueueItem terminate;"
+        _tracy_profiler_contents
+        "${_tracy_profiler_contents}"
+    )
+endif()
+if(NOT _tracy_profiler_contents MATCHES "TRACY_EMBEDDED_CAPTURE_DISCONNECT_DRAIN")
+    message(FATAL_ERROR "Tracy 0.13.1 reusable disconnect drain patch did not apply")
+endif()
+if(NOT _tracy_profiler_contents MATCHES "TRACY_EMBEDDED_CAPTURE_DISCONNECT_RESPONSES")
+    string(REPLACE
+        "    for(;;)\n    {\n        ClearQueues( token );\n        if( m_sock->HasData() )"
+        "    for(;;)\n    {\n#ifdef TRACY_EMBEDDED_CAPTURE\n        // TRACY_EMBEDDED_CAPTURE_DISCONNECT_RESPONSES: metadata responses may\n        // enter the queues after the initial drain; serialize rather than discard them.\n        if( Dequeue( token ) == DequeueStatus::ConnectionLost || DequeueSerial() == DequeueStatus::ConnectionLost ) return;\n#else\n        ClearQueues( token );\n#endif\n        if( m_sock->HasData() )"
+        _tracy_profiler_contents
+        "${_tracy_profiler_contents}"
+    )
+endif()
+if(NOT _tracy_profiler_contents MATCHES "TRACY_EMBEDDED_CAPTURE_DISCONNECT_RESPONSES")
+    message(FATAL_ERROR "Tracy 0.13.1 reusable disconnect response patch did not apply")
+endif()
+file(WRITE "${_tracy_profiler_source}" "${_tracy_profiler_contents}")
+unset(_tracy_profiler_contents)
+unset(_tracy_profiler_source)
+
 set(_tracy_socket_header "${tracy_0131_SOURCE_DIR}/public/common/TracySocket.hpp")
 file(READ "${_tracy_socket_header}" _tracy_socket_contents)
 if(NOT _tracy_socket_contents MATCHES "TRACY_EMBEDDED_CAPTURE_FIELDS")
@@ -139,6 +171,23 @@ elseif(NOT _tracy_worker_contents MATCHES "TRACY_QUERY_FIXTURE_ACCESS")
         "${_tracy_worker_contents}"
     )
 endif()
+if(NOT _tracy_worker_contents MATCHES "RequestEmbeddedDisconnect")
+    string(REPLACE
+        "    void Shutdown() { m_shutdown.store( true, std::memory_order_relaxed ); }\n    void Disconnect();"
+        "    void Shutdown() { m_shutdown.store( true, std::memory_order_relaxed ); }\n#ifdef TRACY_EMBEDDED_CAPTURE\n    void RequestEmbeddedDisconnect() { m_embeddedDisconnectRequested.store( true, std::memory_order_relaxed ); m_netReadCv.notify_one(); }\n#endif\n    void Disconnect();"
+        _tracy_worker_contents
+        "${_tracy_worker_contents}"
+    )
+    string(REPLACE
+        "    std::atomic<bool> m_shutdown { false };"
+        "    std::atomic<bool> m_shutdown { false };\n#ifdef TRACY_EMBEDDED_CAPTURE\n    std::atomic<bool> m_embeddedDisconnectRequested { false };\n#endif"
+        _tracy_worker_contents
+        "${_tracy_worker_contents}"
+    )
+endif()
+if(NOT _tracy_worker_contents MATCHES "RequestEmbeddedDisconnect")
+    message(FATAL_ERROR "Tracy 0.13.1 embedded disconnect header patch did not apply")
+endif()
 file(WRITE "${_tracy_worker_header}" "${_tracy_worker_contents}")
 unset(_tracy_query_accessors)
 unset(_tracy_worker_contents)
@@ -160,6 +209,17 @@ if(NOT _tracy_worker_source_contents MATCHES "TRACY_EMBEDDED_CAPTURE_EARLY_THREA
 endif()
 if(NOT _tracy_worker_source_contents MATCHES "TRACY_EMBEDDED_CAPTURE_EARLY_THREADS")
     message(FATAL_ERROR "Tracy 0.13.1 early Worker thread patch did not apply")
+endif()
+if(NOT _tracy_worker_source_contents MATCHES "TRACY_EMBEDDED_CAPTURE_REUSABLE_DISCONNECT")
+    string(REPLACE
+        "            std::unique_lock<std::mutex> lock( m_netReadLock );\n            m_netReadCv.wait( lock, [this] { return !m_netRead.empty(); } );\n            netbuf = m_netRead.front();"
+        "            std::unique_lock<std::mutex> lock( m_netReadLock );\n#ifdef TRACY_EMBEDDED_CAPTURE\n            // TRACY_EMBEDDED_CAPTURE_REUSABLE_DISCONNECT: request the normal\n            // on-demand disconnect handshake from Worker's owning thread.\n            m_netReadCv.wait( lock, [this] { return !m_netRead.empty() || m_embeddedDisconnectRequested.load( std::memory_order_relaxed ); } );\n            if( m_embeddedDisconnectRequested.exchange( false, std::memory_order_relaxed ) )\n            {\n                lock.unlock();\n                m_disconnect = true;\n                Query( ServerQueryDisconnect, 0 );\n                continue;\n            }\n#else\n            m_netReadCv.wait( lock, [this] { return !m_netRead.empty(); } );\n#endif\n            netbuf = m_netRead.front();"
+        _tracy_worker_source_contents
+        "${_tracy_worker_source_contents}"
+    )
+endif()
+if(NOT _tracy_worker_source_contents MATCHES "TRACY_EMBEDDED_CAPTURE_REUSABLE_DISCONNECT")
+    message(FATAL_ERROR "Tracy 0.13.1 reusable disconnect patch did not apply")
 endif()
 file(WRITE "${_tracy_worker_source}" "${_tracy_worker_source_contents}")
 unset(_tracy_worker_source_contents)

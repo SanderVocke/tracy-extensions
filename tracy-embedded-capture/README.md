@@ -27,12 +27,14 @@ python3 tracy-embedded-capture/examples/rust-embedded-capture/run_demo.py \
   --mode normal --output out/normal.tracy --query build/tracy-query
 python3 tracy-embedded-capture/examples/rust-embedded-capture/run_demo.py \
   --mode unwind-panic --output out/panic.tracy --query build/tracy-query
+python3 tracy-embedded-capture/examples/rust-embedded-capture/run_demo.py \
+  --mode repeated --output out/repeated.tracy --query build/tracy-query
 ```
 
 ## Prebuilt native bundles
 
-Release 0.5.0 includes format-1 bundles for GNU Linux, macOS 12+, and Windows
-MSVC on x86-64 and ARM64. Each contains the public header and independently
+Release 0.6.0 includes ABI v3 format-1 bundles for GNU Linux, macOS 12+, and
+Windows MSVC on x86-64 and ARM64. Each release bundle contains the public header and independently
 linkable embedded-capture, Capstone, and zstd static archives under one
 normalized `tracy-embedded-native/` directory. Set
 `TRACY_CLIENT_SYS_PREBUILT_DIR` to that extracted directory to build the exact
@@ -45,4 +47,4 @@ See [architecture/lifecycle](docs/architecture.md) and the copy-paste
 
 ## Safety contract
 
-Only one configure/start/finish lifecycle is supported per process. Every instrumentation-producing thread must be joined and all Tracy/tracing guards dropped before finalization. `panic=unwind` can be caught and finalized; aborts, fatal signals, timeouts, forced termination, OOM, and power loss cannot run the finalizer and produce no claimed trace.
+The process-global backend supports one active Worker at a time. The legacy configure/finish API remains one-shot; the start/stop API can save or discard multiple sequential captures while keeping the on-demand Tracy profiler alive. Stop requires producers to be quiescent and all active guards dropped; final shutdown additionally requires producer threads to be joined. `___tracy_embedded_capture_get_event_storage_bytes()` exposes Tracy's approximate global server event-storage counter. `panic=unwind` can be caught and finalized; aborts, fatal signals, timeouts, forced termination, OOM, and power loss cannot run the finalizer.

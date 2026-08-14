@@ -113,6 +113,26 @@ if(BUILD_TESTING)
                 -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/verify_embedded_capture.cmake
     )
     set_tests_properties(embedded-capture-native PROPERTIES TIMEOUT 60)
+
+    add_executable(
+        tracy-embedded-capture-repeat-fixture
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/tracy_embedded_repeat_fixture.cpp
+    )
+    target_link_libraries(
+        tracy-embedded-capture-repeat-fixture PRIVATE TracyQuery::EmbeddedCapture
+    )
+    tracy_extensions_apply_warnings(tracy-embedded-capture-repeat-fixture)
+    add_test(
+        NAME embedded-capture-repeated
+        COMMAND ${CMAKE_COMMAND}
+                -DFIXTURE=$<TARGET_FILE:tracy-embedded-capture-repeat-fixture>
+                -DTRACY_QUERY=$<TARGET_FILE:tracy-query>
+                -DFIRST_OUTPUT=${CMAKE_CURRENT_BINARY_DIR}/embedded-repeat-first.tracy
+                -DSECOND_OUTPUT=${CMAKE_CURRENT_BINARY_DIR}/embedded-repeat-second.tracy
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/verify_repeated_capture.cmake
+    )
+    set_tests_properties(embedded-capture-repeated PROPERTIES TIMEOUT 90)
+
     add_test(
         NAME embedded-capture-discard
         COMMAND tracy-embedded-capture-fixture
@@ -175,6 +195,15 @@ if(BUILD_TESTING)
                     --target-dir ${CMAKE_CURRENT_BINARY_DIR}/rust-embedded-target
         )
         add_test(
+            NAME embedded-capture-rust-repeated
+            COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/examples/rust-embedded-capture/run_demo.py
+                    --mode repeated
+                    --output ${CMAKE_CURRENT_BINARY_DIR}/rust-embedded-repeated.tracy
+                    --query $<TARGET_FILE:tracy-query>
+                    --target-dir ${CMAKE_CURRENT_BINARY_DIR}/rust-embedded-target
+        )
+        add_test(
             NAME embedded-capture-rust-panic
             COMMAND ${Python3_EXECUTABLE}
                     ${CMAKE_CURRENT_SOURCE_DIR}/examples/rust-embedded-capture/run_demo.py
@@ -184,13 +213,19 @@ if(BUILD_TESTING)
                     --target-dir ${CMAKE_CURRENT_BINARY_DIR}/rust-embedded-target
         )
         set_tests_properties(
-            embedded-capture-rust-normal embedded-capture-rust-panic
+            embedded-capture-rust-normal embedded-capture-rust-repeated
+            embedded-capture-rust-panic
             PROPERTIES
                 TIMEOUT 900
                 RUN_SERIAL TRUE
                 ENVIRONMENT "TRACY_QUERY_CMAKE_BUILD_DIR=${CMAKE_BINARY_DIR}"
         )
-        set_tests_properties(embedded-capture-rust-panic PROPERTIES DEPENDS embedded-capture-rust-normal)
+        set_tests_properties(
+            embedded-capture-rust-repeated PROPERTIES DEPENDS embedded-capture-rust-normal
+        )
+        set_tests_properties(
+            embedded-capture-rust-panic PROPERTIES DEPENDS embedded-capture-rust-repeated
+        )
 
     endif()
 

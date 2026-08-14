@@ -23,12 +23,15 @@ python3 tracy-embedded-capture/examples/rust-embedded-capture/run_demo.py \
 
 python3 tracy-embedded-capture/examples/rust-embedded-capture/run_demo.py \
   --mode unwind-panic --output out/rust-panic.tracy --query build/tracy-query
+
+python3 tracy-embedded-capture/examples/rust-embedded-capture/run_demo.py \
+  --mode repeated --output out/rust-repeated.tracy --query build/tracy-query
 ```
 
-To test an extracted 0.5.0 bundle without CMake, add
+To test an extracted 0.6.0 ABI v3 bundle without CMake, add
 `--prebuilt-dir /path/to/tracy-embedded-native` and use a fresh `--target-dir`.
-The harness deliberately sets `CMAKE` to a nonexistent command in that mode.
-Add `--release` to exercise Cargo release linkage.
+The harness sets `CMAKE` to a nonexistent command in that mode. Add `--release`
+to exercise Cargo release linkage.
 
 The harness occupies Tracy's customary TCP port range and UDP discovery port
 while the app runs, checks that Cargo resolved exactly one patched sys package,
@@ -45,5 +48,6 @@ panic hook is not used for flushing.
 
 The supported strategy is `panic=unwind`. Abort, fatal signals/exceptions,
 `SIGKILL`, OOM, power loss, double panic, concurrent Tracy calls during finish,
-and failure inside finalization have no durability guarantee. One capture and
-one start/finish lifecycle are supported per process.
+and failure inside finalization have no durability guarantee. The process-global
+backend has one active Worker; repeated mode exercises two sequential files with
+one continuously running Tracy client, then performs final shutdown.

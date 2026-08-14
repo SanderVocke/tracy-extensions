@@ -8,7 +8,7 @@
 extern "C" {
 #endif
 
-enum { TRACY_EMBEDDED_CAPTURE_ABI_VERSION = 2 };
+enum { TRACY_EMBEDDED_CAPTURE_ABI_VERSION = 3 };
 
 typedef enum tracy_embedded_capture_disposition {
     TRACY_EMBEDDED_CAPTURE_SAVE = 1,
@@ -33,7 +33,9 @@ typedef enum tracy_embedded_capture_state {
     TRACY_EMBEDDED_CAPTURE_FINISHING = 3,
     TRACY_EMBEDDED_CAPTURE_FINISHED = 4,
     TRACY_EMBEDDED_CAPTURE_FAILED = 5,
-    TRACY_EMBEDDED_CAPTURE_DISCARDED = 6
+    TRACY_EMBEDDED_CAPTURE_DISCARDED = 6,
+    /* The reusable profiler is running without an active capture Worker. */
+    TRACY_EMBEDDED_CAPTURE_IDLE = 7
 } tracy_embedded_capture_state;
 
 typedef struct tracy_embedded_capture_statistics {
@@ -53,6 +55,24 @@ int32_t ___tracy_embedded_capture_configure(const char* path, size_t path_len,
                                              size_t channel_capacity,
                                              int64_t worker_memory_limit);
 
+/* Start one capture in the reusable lifecycle. On the first call, start the
+ * Tracy profiler separately after this function returns (for example with
+ * tracy_client::Client::start()). Later calls reuse that running profiler.
+ * Only one process-global capture Worker can be active at a time. */
+int32_t ___tracy_embedded_capture_start(const char* path, size_t path_len,
+                                        size_t channel_capacity,
+                                        int64_t worker_memory_limit);
+
+/* Stop a reusable capture while leaving the Tracy profiler running and idle,
+ * ready for another start. Producers and active guards must first quiesce.
+ * SAVE publishes atomically; DISCARD destroys the captured model. */
+int32_t ___tracy_embedded_capture_stop_with_disposition(int32_t disposition);
+int32_t ___tracy_embedded_capture_stop(void);
+
+/* Shut down the reusable profiler after the last stop. No capture may be
+ * active. This is the final Tracy operation in the process. */
+int32_t ___tracy_embedded_capture_shutdown(void);
+
 /* Finalize after every instrumentation-producing thread and active zone/guard
  * has quiesced. SAVE publishes atomically; DISCARD drains and destroys the
  * in-memory model without opening an output file. */
@@ -63,6 +83,13 @@ int32_t ___tracy_embedded_capture_finish(void);
 
 uint32_t ___tracy_embedded_capture_abi_version(void);
 int32_t ___tracy_embedded_capture_get_state(void);
+
+/* Approximate bytes currently allocated for Tracy server-side event storage.
+ * This exposes Tracy 0.13.1's process-global atomic allocation counter. It does
+ * not include the transport buffers, profiler client, or unrelated process
+ * memory. This backend supports at most one active capture Worker. */
+int64_t ___tracy_embedded_capture_get_event_storage_bytes(void);
+
 int32_t ___tracy_embedded_capture_get_statistics(
     tracy_embedded_capture_statistics* statistics);
 
