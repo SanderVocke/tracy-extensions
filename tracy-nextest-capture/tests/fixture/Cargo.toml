@@ -7,10 +7,9 @@ publish = false
 [dependencies]
 tracy-nextest-capture = { path = "../../crates/tracy-nextest-capture" }
 tracy-client = { version = "=0.18.4", default-features = false, features = ["enable", "manual-lifetime"] }
-tracing-tracy = { version = "=0.11.4", default-features = false, features = ["enable", "manual-lifetime"] }
 tracy-client-sys = { version = "=0.28.0", default-features = false, features = ["embedded-capture"] }
+log = "0.4"
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", default-features = false, features = ["registry"] }
 
 [patch.crates-io]
 tracy-client-sys = { path = "../../../tracy-embedded-capture/rust/tracy-client-sys" }

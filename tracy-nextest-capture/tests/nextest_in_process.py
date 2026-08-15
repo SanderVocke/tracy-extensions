@@ -48,7 +48,8 @@ def expected_trace_markers(trace):
     required = [
         f"nextest-in-process:{test}:attempt:{attempt}", body,
         "nextest-in-process.direct-zone", "nextest-in-process.tracing-span",
-        "nextest-in-process.tracing-event", "nextest-in-process.worker:0",
+        "nextest-in-process.tracing-event", "nextest-in-process.log-event",
+        "nextest-in-process.worker-span", "nextest-in-process.worker:0",
         "nextest-in-process.worker:1",
     ]
     if outcome: required.append(outcome)

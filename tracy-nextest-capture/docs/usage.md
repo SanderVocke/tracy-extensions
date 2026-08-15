@@ -41,12 +41,18 @@ not collide. Existing outputs are never overwritten.
 
 ## Lifecycle and safety
 
-The attribute starts capture before the test body and scopes that body inside
-`catch_unwind`. On panic, Rust first drops body locals, zones, spans, and scoped
-dispatchers; the helper then emits a panic marker, finalizes, and resumes the
-original payload. `Result::Err` is finalized before returning the original
-error. Passing tests use the native discard disposition, which performs normal
-Tracy drain/termination but never opens a trace writer.
+The attribute starts capture before the test body, installs a process-wide Tracy
+tracing subscriber and `log` bridge, and scopes the body inside `catch_unwind`.
+On panic, Rust first drops body locals, zones, and spans; the helper then emits a
+panic marker, finalizes, and resumes the original payload. `Result::Err` is
+finalized before returning the original error. Passing tests use the native
+discard disposition, which performs normal Tracy drain/termination but never
+opens a trace writer.
+
+The subscriber is installed only for a complete enabled nextest attempt, after
+embedded capture startup. Tests must not install another global tracing
+subscriber or logger. Ordinary `tracing` spans/events and `log` records from
+every joined test thread are captured automatically.
 
 Tests must join every instrumentation-producing thread and drop all guards
 before returning. Async tests, custom harnesses, parameterized frameworks, and
