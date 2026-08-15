@@ -1,6 +1,6 @@
 # Nextest capture architecture and testing
 
-The attribute macro keeps the capture owner outside `catch_unwind` and invokes the complete synchronous test body inside it. After normal return or unwinding has dropped body locals, guards, spans, and scoped dispatchers, the runtime selects save/discard. Panic payloads are resumed; `Result::Err` values are returned unchanged.
+The attribute macro keeps the capture owner outside `catch_unwind` and invokes the complete synchronous test body inside it. After capture startup, the runtime installs a process-wide Tracy tracing subscriber and `log` bridge. After normal return or unwinding has dropped body locals, guards, and spans, the runtime selects save/discard. Panic payloads are resumed; `Result::Err` values are returned unchanged.
 
 Activation requires all of `NEXTEST_ATTEMPT_ID`, `NEXTEST_TEST_NAME`, `NEXTEST_BINARY_ID`, and `NEXTEST_ATTEMPT`, plus an enabled policy. Filenames contain bounded sanitized display fragments and a SHA-256 prefix of the opaque attempt ID. Metadata cannot create path components.
 
@@ -8,6 +8,7 @@ Activation requires all of `NEXTEST_ATTEMPT_ID`, `NEXTEST_TEST_NAME`, `NEXTEST_B
 
 - The embedded component supplies ABI v3, bounded protocol transport, and save/discard finalization.
 - The query component validates every saved trace with `check`, `range`, `info`, and exact semantic queries.
+- The runtime routes ordinary `tracing` spans/events and bridged `log` records from all test threads into the active capture.
 - No network port, helper process, JUnit reconciliation, or post-exit decision is involved.
 
 ## Test contracts

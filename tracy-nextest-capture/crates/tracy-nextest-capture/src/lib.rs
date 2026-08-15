@@ -10,6 +10,8 @@ use std::ffi::OsString;
 use std::fmt::Debug;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
+use tracing_subscriber::fmt::format::DefaultFields;
+use tracing_subscriber::layer::SubscriberExt;
 
 pub use tracy_nextest_capture_macros::tracy_capture_test;
 
@@ -72,6 +74,7 @@ impl Capture {
         let client = tracy_client::Client::start();
         wait_until_capturing()
             .map_err(|error| format!("{diagnostic_identity}: {error}"))?;
+        initialize_tracing().map_err(|error| format!("{diagnostic_identity}: {error}"))?;
         client.message(&format!("nextest-in-process:{test_name}:attempt:{attempt}"), 0);
         Ok(Some(Self { policy, client, output, diagnostic_identity }))
     }
@@ -155,6 +158,33 @@ where
             std::panic::resume_unwind(payload);
         }
     }
+}
+
+#[derive(Default)]
+struct NextestTracyConfig {
+    fields: DefaultFields,
+}
+
+impl tracing_tracy::Config for NextestTracyConfig {
+    type Formatter = DefaultFields;
+
+    fn formatter(&self) -> &Self::Formatter {
+        &self.fields
+    }
+
+    fn format_fields_in_zone_name(&self) -> bool {
+        false
+    }
+}
+
+fn initialize_tracing() -> Result<(), String> {
+    let subscriber = tracing_subscriber::registry()
+        .with(tracing_tracy::TracyLayer::new(NextestTracyConfig::default()));
+    tracing::subscriber::set_global_default(subscriber)
+        .map_err(|error| format!("could not install Tracy tracing subscriber: {error}"))?;
+    tracing_log::LogTracer::init()
+        .map_err(|error| format!("could not install log-to-tracing bridge: {error}"))?;
+    Ok(())
 }
 
 fn parse_policy(value: Option<OsString>) -> Result<Policy, String> {

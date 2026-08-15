@@ -3,29 +3,29 @@ mod tests {
     use std::error::Error;
     use std::fmt::{Display, Formatter};
     use std::time::Duration;
-    use tracing_subscriber::prelude::*;
 
     use tracy_nextest_capture::tracy_capture_test;
 
     fn emit(marker: &str) {
         let Some(client) = tracy_client::Client::running() else { return; };
-        let subscriber = tracing_subscriber::registry().with(tracing_tracy::TracyLayer::default());
-        let dispatch = tracing::Dispatch::new(subscriber);
-        tracing::dispatcher::with_default(&dispatch, || {
-            let _direct = client.clone().span_alloc(
-                Some("nextest-in-process.direct-zone"), "emit", file!(), line!(), 0,
-            );
-            client.message(marker, 0);
-            let span = tracing::info_span!("nextest-in-process.tracing-span", marker);
-            let _entered = span.enter();
-            tracing::info!(marker, "nextest-in-process.tracing-event");
-            let workers: Vec<_> = (0..2).map(|worker| {
-                let client = client.clone();
-                std::thread::spawn(move || client.message(&format!("nextest-in-process.worker:{worker}"), 0))
-            }).collect();
-            for worker in workers { worker.join().expect("producer must join"); }
-            std::thread::sleep(Duration::from_millis(10));
-        });
+        let _direct = client.clone().span_alloc(
+            Some("nextest-in-process.direct-zone"), "emit", file!(), line!(), 0,
+        );
+        client.message(marker, 0);
+        let span = tracing::info_span!("nextest-in-process.tracing-span", marker);
+        let _entered = span.enter();
+        tracing::info!(marker, "nextest-in-process.tracing-event");
+        log::info!("nextest-in-process.log-event");
+        let workers: Vec<_> = (0..2).map(|worker| {
+            let client = client.clone();
+            std::thread::spawn(move || {
+                let span = tracing::info_span!("nextest-in-process.worker-span", worker);
+                let _entered = span.enter();
+                client.message(&format!("nextest-in-process.worker:{worker}"), 0)
+            })
+        }).collect();
+        for worker in workers { worker.join().expect("producer must join"); }
+        std::thread::sleep(Duration::from_millis(10));
     }
 
     #[derive(Debug)]

@@ -357,6 +357,10 @@ name = "tracy-nextest-capture"
 version = "0.6.0"
 dependencies = [
  "sha2",
+ "tracing",
+ "tracing-log",
+ "tracing-subscriber",
+ "tracing-tracy",
  "tracy-client",
  "tracy-client-sys",
  "tracy-nextest-capture-macros",
@@ -375,9 +379,8 @@ dependencies = [
 name = "tracy-nextest-in-process-fixture"
 version = "0.6.0"
 dependencies = [
+ "log",
  "tracing",
- "tracing-subscriber",
- "tracing-tracy",
  "tracy-client",
  "tracy-client-sys",
  "tracy-nextest-capture",

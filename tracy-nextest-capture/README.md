@@ -1,6 +1,6 @@
 # tracy-nextest-capture
 
-Failure-only in-process Tracy capture for synchronous cargo-nextest tests. Each opted-in nextest attempt owns one embedded capture lifecycle. Passing attempts drain and discard without opening a writer; unwind panics and `Result::Err` atomically save a trace before preserving the original test result.
+Failure-only in-process Tracy capture for synchronous cargo-nextest tests. Each opted-in nextest attempt owns one embedded capture lifecycle and installs a process-wide Tracy tracing subscriber plus a `log` bridge. Passing attempts drain and discard without opening a writer; unwind panics and `Result::Err` atomically save a trace before preserving the original test result.
 
 ## Deliverables
 
@@ -18,8 +18,9 @@ use tracy_nextest_capture::tracy_capture_test;
 
 #[tracy_capture_test]
 fn profiled_test() {
-    let client = tracy_client::Client::running().unwrap();
-    client.message("test marker", 0);
+    tracing::info_span!("profiled_test").in_scope(|| {
+        log::info!("test marker");
+    });
 }
 ```
 
