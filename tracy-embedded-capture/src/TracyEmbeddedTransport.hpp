@@ -15,7 +15,7 @@ struct Statistics {
 bool Configure(std::size_t capacity);
 bool Listen();
 bool Connect(void*& endpoint);
-bool Accept(void*& endpoint);
+bool Accept(void*& endpoint, int timeoutMilliseconds = 10);
 void CloseEndpoint(void* endpoint);
 void DestroyEndpoint(void*& endpoint);
 int Send(void* endpoint, const void* data, int length);

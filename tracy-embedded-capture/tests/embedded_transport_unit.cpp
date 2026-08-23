@@ -20,14 +20,69 @@ int fail(const char* message) {
 int main(int argc, char** argv) {
     using namespace tracy::embedded;
     const std::string_view mode = argc == 2 ? argv[1] : "core";
-    if (argc > 2 || (mode != "core" && mode != "peer-destroy" && mode != "cancel")) {
-        return fail("usage: embedded-transport-unit [core|peer-destroy|cancel]");
+    if (argc > 2 ||
+        (mode != "core" && mode != "peer-destroy" && mode != "cancel" &&
+         mode != "accept-timeout" && mode != "accept-connect" &&
+         mode != "accept-cancel" && mode != "accept-reset")) {
+        return fail("usage: embedded-transport-unit "
+                    "[core|peer-destroy|cancel|accept-timeout|accept-connect|"
+                    "accept-cancel|accept-reset]");
     }
     if (!Configure(8)) return fail("configure failed");
     if (!Listen()) return fail("listen failed");
 
     void* server = nullptr;
     void* client = nullptr;
+    if (mode == "accept-timeout") {
+        const auto begin = std::chrono::steady_clock::now();
+        if (Accept(client, 80) || client) return fail("accept unexpectedly succeeded");
+        const auto elapsed = std::chrono::steady_clock::now() - begin;
+        if (elapsed < std::chrono::milliseconds(40)) {
+            return fail("accept returned before its bounded wait");
+        }
+        if (elapsed > std::chrono::seconds(2)) return fail("accept timeout was excessive");
+        Reset();
+        return 0;
+    }
+    if (mode == "accept-connect" || mode == "accept-cancel" ||
+        mode == "accept-reset") {
+        std::atomic<bool> acceptStarted = false;
+        bool accepted = false;
+        std::thread accepter([&] {
+            acceptStarted.store(true, std::memory_order_release);
+            accepted = Accept(client, 2000);
+        });
+        while (!acceptStarted.load(std::memory_order_acquire)) std::this_thread::yield();
+        std::this_thread::sleep_for(std::chrono::milliseconds(40));
+
+        const auto wakeBegin = std::chrono::steady_clock::now();
+        bool stateChangeSucceeded = true;
+        if (mode == "accept-connect") {
+            stateChangeSucceeded = Connect(server);
+        } else if (mode == "accept-cancel") {
+            Cancel();
+        } else {
+            Reset();
+        }
+        accepter.join();
+        if (!stateChangeSucceeded) return fail("connect failed while accept was waiting");
+        const auto wakeElapsed = std::chrono::steady_clock::now() - wakeBegin;
+        if (wakeElapsed > std::chrono::milliseconds(500)) {
+            return fail("accept did not wake promptly after transport state changed");
+        }
+        if (accepted != (mode == "accept-connect")) {
+            return fail("accept returned the wrong result after transport state changed");
+        }
+        if (accepted && (!client || !IsValid(client))) {
+            return fail("woken accept did not return a valid endpoint");
+        }
+        DestroyEndpoint(client);
+        DestroyEndpoint(server);
+        Cancel();
+        Reset();
+        return 0;
+    }
+
     if (!Connect(server) || !Accept(client)) return fail("rendezvous failed");
     if (!IsValid(server) || !IsValid(client) || Capacity(server) != 8) {
         return fail("invalid endpoints");
