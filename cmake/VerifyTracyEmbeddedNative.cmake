@@ -36,7 +36,7 @@ function(_require key expected)
 endfunction()
 
 _require(bundle_format_version 1)
-_require(tracy_extensions_version 0.6.0)
+_require(tracy_extensions_version 0.7.0)
 _require(tracy_version 0.13.1)
 _require(tracy_protocol 76)
 _require(embedded_capture_abi 3)

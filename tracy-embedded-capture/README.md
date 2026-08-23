@@ -33,7 +33,7 @@ python3 tracy-embedded-capture/examples/rust-embedded-capture/run_demo.py \
 
 ## Prebuilt native bundles
 
-Release 0.6.0 includes ABI v3 format-1 bundles for GNU Linux, macOS 12+, and
+Release 0.7.0 includes ABI v3 format-1 bundles for GNU Linux, macOS 12+, and
 Windows MSVC on x86-64 and ARM64. Each release bundle contains the public header and independently
 linkable embedded-capture, Capstone, and zstd static archives under one
 normalized `tracy-embedded-native/` directory. Set

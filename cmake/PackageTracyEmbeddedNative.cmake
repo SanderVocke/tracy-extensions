@@ -12,8 +12,8 @@ foreach(_required IN ITEMS
         message(FATAL_ERROR "Package input ${_required} is required")
     endif()
 endforeach()
-if(NOT PROJECT_VERSION STREQUAL "0.6.0")
-    message(FATAL_ERROR "Embedded-native bundles must report tracy-extensions 0.6.0")
+if(NOT PROJECT_VERSION STREQUAL "0.7.0")
+    message(FATAL_ERROR "Embedded-native bundles must report tracy-extensions 0.7.0")
 endif()
 execute_process(
     COMMAND git rev-parse HEAD

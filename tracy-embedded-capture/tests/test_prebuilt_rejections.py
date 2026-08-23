@@ -49,7 +49,7 @@ def main():
     cases = [
         ("malformed", None, None, "malformed manifest"),
         ("target", "target_triple=", "target_triple=not-the-target-", "target_triple"),
-        ("version", "tracy_extensions_version=0.6.0", "tracy_extensions_version=9.9.9", "tracy_extensions_version"),
+        ("version", "tracy_extensions_version=0.7.0", "tracy_extensions_version=9.9.9", "tracy_extensions_version"),
         ("abi", "embedded_capture_abi=3", "embedded_capture_abi=2", "embedded_capture_abi"),
         ("profile", "native_feature_profile=embedded-capture-v1", "native_feature_profile=wrong", "native_feature_profile"),
         ("runtime", "runtime_abi=", "runtime_abi=wrong-", "runtime_abi"),

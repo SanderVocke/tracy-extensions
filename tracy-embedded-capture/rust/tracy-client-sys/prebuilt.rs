@@ -119,7 +119,7 @@ pub fn validate(
     let values = parse_manifest(&text)?;
 
     require(&values, "bundle_format_version", Some("1"))?;
-    require(&values, "tracy_extensions_version", Some("0.6.0"))?;
+    require(&values, "tracy_extensions_version", Some("0.7.0"))?;
     require(&values, "tracy_version", Some("0.13.1"))?;
     require(&values, "tracy_protocol", Some("76"))?;
     require(&values, "embedded_capture_abi", Some("3"))?;

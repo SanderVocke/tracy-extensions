@@ -28,7 +28,7 @@ python3 tracy-embedded-capture/examples/rust-embedded-capture/run_demo.py \
   --mode repeated --output out/rust-repeated.tracy --query build/tracy-query
 ```
 
-To test an extracted 0.6.0 ABI v3 bundle without CMake, add
+To test an extracted 0.7.0 ABI v3 bundle without CMake, add
 `--prebuilt-dir /path/to/tracy-embedded-native` and use a fresh `--target-dir`.
 The harness sets `CMAKE` to a nonexistent command in that mode. Add `--release`
 to exercise Cargo release linkage.

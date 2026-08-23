@@ -24,7 +24,7 @@ add another native feature when consuming a prebuilt bundle.
 
 ## CMake-free prebuilt workflow
 
-ABI v3 consumers require a 0.6.0 bundle whose manifest contains
+ABI v3 consumers require a 0.7.0 bundle whose manifest contains
 `embedded_capture_abi=3`. Older ABI v2 bundles are intentionally rejected.
 Select the asset by the exact Rust target triple, not only by the host name:
 
@@ -40,7 +40,7 @@ Select the asset by the exact Rust target triple, not only by the host name:
 Linux x86-64, from a clean consumer checkout:
 
 ```sh
-version=0.6.0
+version=0.7.0
 asset=tracy-embedded-native-linux-x86_64.tar.gz
 base=https://github.com/SanderVocke/tracy-extensions/releases/download/v${version}
 mkdir -p .tracy-native/download .tracy-native/extracted
@@ -58,7 +58,7 @@ On macOS use the corresponding asset and `shasum -a 256 -c` for the filtered
 checksum line. PowerShell on Windows:
 
 ```powershell
-$Version = "0.6.0"
+$Version = "0.7.0"
 $Asset = "tracy-embedded-native-windows-x86_64.zip"
 $Base = "https://github.com/SanderVocke/tracy-extensions/releases/download/v$Version"
 New-Item -ItemType Directory -Force .tracy-native\download,.tracy-native\extracted | Out-Null

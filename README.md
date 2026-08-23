@@ -31,7 +31,7 @@ Linux release builds are fully static by default; Windows uses the static MSVC r
 
 ## Release products
 
-Release 0.6.0 provides both `tracy-query` and ABI v3 prebuilt embedded-capture native libraries:
+Release 0.7.0 provides both `tracy-query` and ABI v3 prebuilt embedded-capture native libraries:
 
 | Rust target | Query executable | Embedded-native bundle |
 |---|---|---|

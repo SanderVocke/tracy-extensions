@@ -402,7 +402,7 @@ dependencies = [
 
 [[package]]
 name = "tracy-nextest-capture"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "sha2",
  "tempfile",
@@ -413,7 +413,7 @@ dependencies = [
 
 [[package]]
 name = "tracy-nextest-capture-macros"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "proc-macro2",
  "quote",

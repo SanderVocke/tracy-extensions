@@ -138,7 +138,7 @@ jobs:
           cmake --install build --config Release --prefix stage
           mkdir -p dist
           query="stage/bin/tracy-query${{ matrix.suffix }}"
-          "$query" --version | grep 'tracy-query 0.6.0 (Tracy parser 0.13.1)'
+          "$query" --version | grep 'tracy-query 0.7.0 (Tracy parser 0.13.1)'
           cmake -E copy "$query" "dist/tracy-query-${{ matrix.platform }}${{ matrix.suffix }}"
           test -s "dist/tracy-query-${{ matrix.platform }}${{ matrix.suffix }}"
 
@@ -346,9 +346,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "${GITHUB_REF_NAME}" = "v0.6.0"
+          test "${GITHUB_REF_NAME}" = "v0.7.0"
           test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
-          test "$(git rev-list -n1 v0.6.0)" = "${GITHUB_SHA}"
+          test "$(git rev-list -n1 v0.7.0)" = "${GITHUB_SHA}"
           .github/scripts/verify-release-files.sh release
           (cd release && sha256sum tracy-* > SHA256SUMS)
           test "$(wc -l < release/SHA256SUMS)" -eq 12
@@ -360,7 +360,7 @@ jobs:
         shell: bash
         run: |
           cat > release-notes.md <<'EOF'
-          `tracy-extensions` 0.6.0 adds embedded-capture ABI v3 for Tracy Profiler 0.13.1/protocol 76: capture state and event-storage memory queries, plus reusable sequential start/stop/save cycles in one process.
+          `tracy-extensions` 0.7.0 fixes excessive idle CPU use between reusable embedded-capture sessions by making the in-memory transport's accept path perform a bounded, wakeable wait.
 
           Six query executables and six ABI v3 `tracy-embedded-native` bundles cover Linux, macOS, and Windows on x86-64 and ARM64. Native bundles use profile `embedded-capture-v1`; Windows query executables retain the static MSVC runtime while Windows native libraries use the dynamic MSVC CRT required by ordinary Rust MSVC targets.
 
@@ -368,5 +368,5 @@ jobs:
           EOF
           gh release create "${GITHUB_REF_NAME}" release/tracy-* release/SHA256SUMS \
             --verify-tag \
-            --title "tracy-extensions 0.6.0" \
+            --title "tracy-extensions 0.7.0" \
             --notes-file release-notes.md
