@@ -68,6 +68,14 @@ int main(int argc, char** argv) {
         return 23;
     }
 
+    // Leave the reusable profiler with no configured transport long enough to
+    // exercise its bounded accept wait before reconnecting the next capture.
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    if (___tracy_embedded_capture_get_state() != TRACY_EMBEDDED_CAPTURE_IDLE ||
+        ___tracy_embedded_capture_get_event_storage_bytes() != 0) {
+        return 24;
+    }
+
     status = start(second);
     if (status != TRACY_EMBEDDED_CAPTURE_OK) return 30 + status;
     if (___tracy_embedded_capture_get_event_storage_bytes() <= 0) return 31;

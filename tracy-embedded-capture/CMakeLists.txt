@@ -92,7 +92,17 @@ if(BUILD_TESTING)
     target_include_directories(tracy-embedded-transport-unit-tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
     target_link_libraries(tracy-embedded-transport-unit-tests PRIVATE Threads::Threads)
     tracy_extensions_apply_warnings(tracy-embedded-transport-unit-tests)
-    foreach(_mode IN ITEMS core peer-destroy cancel)
+    foreach(
+        _mode
+        IN ITEMS
+            core
+            peer-destroy
+            cancel
+            accept-timeout
+            accept-connect
+            accept-cancel
+            accept-reset
+    )
         add_test(
             NAME embedded-transport-${_mode}
             COMMAND tracy-embedded-transport-unit-tests ${_mode}

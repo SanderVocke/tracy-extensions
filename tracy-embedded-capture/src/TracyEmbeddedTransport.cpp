@@ -34,12 +34,10 @@ struct Session {
 
     Pipe clientToServer;
     Pipe serverToClient;
-    std::mutex rendezvousMutex;
     bool listening = false;
     bool connected = false;
     bool accepted = false;
     bool cancelled = false;
-    std::string error;
 };
 
 struct Endpoint {
@@ -48,7 +46,10 @@ struct Endpoint {
     bool closed = false;
 };
 
+// gMutex protects session publication and all rendezvous state. Using the same
+// mutex for the condition wait makes state checks atomic and prevents lost wakes.
 std::mutex gMutex;
+std::condition_variable gRendezvousChanged;
 std::shared_ptr<Session> gSession;
 bool gListening = false;
 std::string gError;
@@ -61,12 +62,6 @@ Pipe& outgoing(Endpoint& endpoint) {
 Pipe& incoming(Endpoint& endpoint) {
     return endpoint.client ? endpoint.session->serverToClient
                            : endpoint.session->clientToServer;
-}
-
-void setError(const std::string& message) {
-    std::lock_guard lock(gMutex);
-    gError = message;
-    if (gSession) gSession->error = message;
 }
 
 void closePipeWriter(Pipe& pipe) {
@@ -137,71 +132,83 @@ int readPipe(Pipe& pipe, char* destination, int length, int timeoutMilliseconds)
 }  // namespace
 
 bool Configure(std::size_t capacity) {
-    std::lock_guard lock(gMutex);
-    if (capacity == 0 || capacity > static_cast<std::size_t>(std::numeric_limits<int>::max())) {
-        gError = "embedded transport capacity is invalid";
-        return false;
+    {
+        std::lock_guard lock(gMutex);
+        if (capacity == 0 ||
+            capacity > static_cast<std::size_t>(std::numeric_limits<int>::max())) {
+            gError = "embedded transport capacity is invalid";
+            return false;
+        }
+        if (gSession) {
+            gError = "embedded transport is already configured";
+            return false;
+        }
+        try {
+            gSession = std::make_shared<Session>(capacity);
+            gSession->listening = gListening;
+            gError.clear();
+        } catch (...) {
+            gError = "cannot allocate embedded transport";
+            return false;
+        }
     }
-    if (gSession) {
-        gError = "embedded transport is already configured";
-        return false;
-    }
-    try {
-        gSession = std::make_shared<Session>(capacity);
-        gSession->listening = gListening;
-        gError.clear();
-        return true;
-    } catch (...) {
-        gError = "cannot allocate embedded transport";
-        return false;
-    }
+    gRendezvousChanged.notify_all();
+    return true;
 }
 
 bool Listen() {
-    std::shared_ptr<Session> session;
     {
-        std::lock_guard lock(gMutex);
-        session = gSession;
+        std::lock_guard globalLock(gMutex);
+        const auto session = gSession;
+        if (!session) {
+            gError = "embedded transport is not configured";
+            return false;
+        }
+        if (gListening || session->cancelled) return false;
+        gListening = true;
+        session->listening = true;
     }
-    if (!session) {
-        setError("embedded transport is not configured");
-        return false;
-    }
-    std::scoped_lock lock(gMutex, session->rendezvousMutex);
-    if (gListening || session != gSession || session->cancelled) return false;
-    gListening = true;
-    session->listening = true;
+    gRendezvousChanged.notify_all();
     return true;
 }
 
 bool Connect(void*& endpoint) {
     if (endpoint) return true;
-    std::shared_ptr<Session> session;
     {
-        std::lock_guard lock(gMutex);
-        session = gSession;
+        std::lock_guard globalLock(gMutex);
+        const auto session = gSession;
+        if (!session) return false;
+        if (!session->listening || session->cancelled || session->connected) return false;
+        endpoint = new Endpoint{session, false, false};
+        session->connected = true;
     }
-    if (!session) return false;
-    std::lock_guard lock(session->rendezvousMutex);
-    if (!session->listening || session->cancelled || session->connected) return false;
-    session->connected = true;
-    endpoint = new Endpoint{session, false, false};
+    gRendezvousChanged.notify_all();
     return true;
 }
 
-bool Accept(void*& endpoint) {
+bool Accept(void*& endpoint, int timeoutMilliseconds) {
     if (endpoint) return false;
-    std::shared_ptr<Session> session;
-    {
-        std::lock_guard lock(gMutex);
-        session = gSession;
+
+    const auto deadline = std::chrono::steady_clock::now() +
+                          std::chrono::milliseconds(std::max(timeoutMilliseconds, 0));
+    std::unique_lock globalLock(gMutex);
+    auto observedSession = gSession;
+    for (;;) {
+        const auto session = gSession;
+        if (observedSession && session != observedSession) return false;
+        if (session) {
+            if (!observedSession) observedSession = session;
+            if (session->cancelled) return false;
+            if (session->connected && !session->accepted) {
+                endpoint = new Endpoint{session, true, false};
+                session->accepted = true;
+                return true;
+            }
+        }
+
+        if (std::chrono::steady_clock::now() >= deadline) return false;
+        gRendezvousChanged.wait_until(globalLock, deadline);
     }
-    if (!session) return false;
-    std::lock_guard lock(session->rendezvousMutex);
-    if (!session->connected || session->cancelled || session->accepted) return false;
-    session->accepted = true;
-    endpoint = new Endpoint{session, true, false};
-    return true;
 }
 
 void CloseEndpoint(void* opaque) {
@@ -256,22 +263,23 @@ int Capacity(void* opaque) {
 void Cancel() {
     std::shared_ptr<Session> session;
     {
-        std::lock_guard lock(gMutex);
+        std::lock_guard globalLock(gMutex);
         session = gSession;
-    }
-    if (!session) return;
-    {
-        std::lock_guard lock(session->rendezvousMutex);
+        if (!session) return;
         session->cancelled = true;
     }
     cancelPipe(session->clientToServer);
     cancelPipe(session->serverToClient);
+    gRendezvousChanged.notify_all();
 }
 
 void Reset() {
-    std::lock_guard lock(gMutex);
-    gSession.reset();
-    gError.clear();
+    {
+        std::lock_guard lock(gMutex);
+        gSession.reset();
+        gError.clear();
+    }
+    gRendezvousChanged.notify_all();
 }
 
 Statistics GetStatistics() {
